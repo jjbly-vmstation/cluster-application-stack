@@ -1,0 +1,65 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Production overlay
+# Applies production-specific configurations
+
+metadata:
+  name: vmstation-apps-production
+
+# Inherit from base
+resources:
+  - ../../base
+
+# Production-specific labels
+labels:
+  - includeSelectors: false
+    pairs:
+      environment: production
+
+# Production patches
+patches:
+  # Jellyfin production configuration
+  - target:
+      kind: ConfigMap
+      name: jellyfin-config
+      namespace: jellyfin
+    patch: |-
+      - op: replace
+        path: /data/JELLYFIN_PublishedServerUrl
+        value: "http://192.168.4.61:30096"
+      - op: replace
+        path: /data/JELLYFIN_LOG_LEVEL
+        value: "Warning"
+
+  # Production deployment adjustments
+  - target:
+      kind: Deployment
+      name: jellyfin
+      namespace: jellyfin
+    patch: |-
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value:
+          kubernetes.io/hostname: storagenodet3500
+
+  # Production service as NodePort
+  - target:
+      kind: Service
+      name: jellyfin-service
+      namespace: jellyfin
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30096
+      - op: add
+        path: /spec/ports/1/nodePort
+        value: 30920
+
+# Image tags for production (use specific versions, not latest)
+images:
+  - name: jellyfin/jellyfin
+    newTag: "10.9.11"

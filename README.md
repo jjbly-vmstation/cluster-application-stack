@@ -1,2 +1,162 @@
-# cluster-application-stack
-# VMStation Applications  This repository manages application layer workloads for VMStation.  - Media servers (e.g., Jellyfin) - Lab apps and custom workloads - Application manifests  See the organization README for cross-repo context.
+# VMStation Cluster Application Stack
+
+This repository manages application layer workloads for the VMStation Kubernetes cluster.
+
+## Overview
+
+The cluster-application-stack contains:
+- **Media servers** (Jellyfin)
+- **Lab applications** and custom workloads
+- **Kubernetes manifests** with Kustomize overlays
+- **Ansible playbooks** for automated deployments
+
+## Repository Structure
+
+```
+cluster-application-stack/
+├── README.md                        # This file
+├── IMPROVEMENTS_AND_STANDARDS.md    # Best practices documentation
+├── manifests/                       # Kubernetes manifests
+│   ├── jellyfin/                    # Jellyfin media server
+│   │   ├── kustomization.yaml
+│   │   ├── namespace.yaml
+│   │   ├── deployment.yaml
+│   │   ├── service.yaml
+│   │   ├── configmap.yaml
+│   │   ├── persistentvolumeclaim.yaml
+│   │   └── ingress.yaml
+│   └── common/                      # Shared resources
+│       ├── namespace.yaml
+│       └── resource-quotas.yaml
+├── kustomize/                       # Kustomize configurations
+│   ├── base/                        # Base configuration
+│   ├── overlays/
+│   │   ├── production/              # Production overlay
+│   │   └── staging/                 # Staging overlay
+│   └── README.md
+├── helm-charts/                     # Helm charts (future)
+│   └── README.md
+├── ansible/                         # Ansible automation
+│   ├── ansible.cfg
+│   ├── inventory/
+│   │   └── hosts.yml
+│   └── playbooks/
+│       ├── deploy-jellyfin.yml
+│       ├── deploy-applications.yml
+│       └── deploy-jellyfin-tasks.yml
+└── docs/                            # Documentation
+    ├── JELLYFIN_SETUP.md
+    ├── APPLICATION_DEPLOYMENT.md
+    └── STORAGE_CONFIGURATION.md
+```
+
+## Quick Start
+
+### Prerequisites
+
+- Kubernetes cluster running (v1.29+)
+- kubectl configured with cluster access
+- Ansible installed (for playbook deployments)
+
+### Deploy with Ansible (Recommended)
+
+```bash
+cd ansible
+
+# Deploy all applications to production
+ansible-playbook playbooks/deploy-applications.yml -e environment=production
+
+# Deploy only Jellyfin
+ansible-playbook playbooks/deploy-jellyfin.yml -e environment=production
+```
+
+### Deploy with Kustomize
+
+```bash
+# Deploy to production
+kubectl apply -k kustomize/overlays/production
+
+# Deploy to staging
+kubectl apply -k kustomize/overlays/staging
+
+# Preview configuration
+kubectl kustomize kustomize/overlays/production
+```
+
+### Deploy Individual Manifests
+
+```bash
+# Apply Jellyfin directly
+kubectl apply -f manifests/jellyfin/
+
+# Validate without applying
+kubectl apply -f manifests/jellyfin/ --dry-run=client
+```
+
+## Applications
+
+### Jellyfin Media Server
+
+A self-hosted media streaming solution.
+
+| Attribute | Value |
+|-----------|-------|
+| Namespace | `jellyfin` |
+| Port | 8096 (HTTP), 8920 (HTTPS) |
+| NodePort | 30096 (HTTP), 30920 (HTTPS) |
+| Node | storagenodet3500 |
+
+**Access**: http://192.168.4.61:30096
+
+For setup details, see [docs/JELLYFIN_SETUP.md](docs/JELLYFIN_SETUP.md).
+
+## Cluster Nodes
+
+| Node | IP | Role | Applications |
+|------|-----|------|--------------|
+| masternode | 192.168.4.63 | Control Plane | Monitoring stack |
+| storagenodet3500 | 192.168.4.61 | Worker (Storage) | Jellyfin |
+| homelab | 192.168.4.62 | Worker (Compute) | General workloads |
+
+## Environments
+
+### Production
+- Specific image versions (not `:latest`)
+- NodePort services for external access
+- Node selectors for proper placement
+- Reduced logging verbosity
+
+### Staging
+- Uses `:latest` tags
+- Reduced resource limits
+- Debug-level logging
+- ClusterIP services
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [IMPROVEMENTS_AND_STANDARDS.md](IMPROVEMENTS_AND_STANDARDS.md) | Best practices and standards |
+| [docs/JELLYFIN_SETUP.md](docs/JELLYFIN_SETUP.md) | Jellyfin setup guide |
+| [docs/APPLICATION_DEPLOYMENT.md](docs/APPLICATION_DEPLOYMENT.md) | Deployment procedures |
+| [docs/STORAGE_CONFIGURATION.md](docs/STORAGE_CONFIGURATION.md) | Storage setup and management |
+| [kustomize/README.md](kustomize/README.md) | Kustomize usage guide |
+| [helm-charts/README.md](helm-charts/README.md) | Helm charts (future) |
+
+## Contributing
+
+1. Create a feature branch
+2. Add or modify manifests
+3. Update Kustomize overlays if needed
+4. Test with `kubectl apply --dry-run`
+5. Update documentation
+6. Submit a pull request
+
+## Related Repositories
+
+- [vmstation](https://github.com/jjbly-vmstation/vmstation) - Original monorepo
+- [cluster-infrastructure](https://github.com/jjbly-vmstation/cluster-infrastructure) - Cluster infrastructure
+
+## License
+
+Apache License 2.0 - See [LICENSE](LICENSE) for details.

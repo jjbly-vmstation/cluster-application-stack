@@ -1,0 +1,57 @@
+# Ansible
+*.retry
+ansible/inventory/*.vault
+ansible/vault_pass.txt
+ansible/.vault_password
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+
+# Kustomize build output
+kustomize/**/output/
+kustomize/**/rendered/
+
+# Helm
+helm-charts/**/charts/
+helm-charts/**/*.tgz
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+tmp/
+
+# Logs
+*.log
+logs/
+
+# Secrets (never commit)
+*.pem
+*.key
+*.crt
+secrets/
+*.secret.yaml
+*.secret.yml
+
+# Python
+__pycache__/
+*.py[cod]
+.env
+venv/
+.venv/
+
+# Build artifacts
+dist/
+build/

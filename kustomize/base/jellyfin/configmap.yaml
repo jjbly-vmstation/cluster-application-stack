@@ -1,0 +1,18 @@
+---
+# Jellyfin ConfigMap for configuration settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jellyfin-config
+  namespace: jellyfin
+  labels:
+    app: jellyfin
+    app.kubernetes.io/name: jellyfin
+    app.kubernetes.io/component: media-server
+data:
+  # Jellyfin environment configuration
+  JELLYFIN_HTTP_BIND_ADDRESS: "0.0.0.0"
+  JELLYFIN_HTTP_PORT: "8096"
+  JELLYFIN_LOG_LEVEL: "Information"
+  # Override these in overlays for different environments
+  JELLYFIN_PublishedServerUrl: "http://localhost:8096"

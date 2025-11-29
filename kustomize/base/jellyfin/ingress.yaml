@@ -1,0 +1,37 @@
+---
+# Jellyfin Ingress (optional)
+# Enable this for HTTPS access via an Ingress controller
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jellyfin-ingress
+  namespace: jellyfin
+  labels:
+    app: jellyfin
+    app.kubernetes.io/name: jellyfin
+    app.kubernetes.io/component: media-server
+  annotations:
+    # Uncomment and configure based on your ingress controller
+    # nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    # nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  # Uncomment and set your ingress class
+  # ingressClassName: nginx
+  rules:
+    - host: jellyfin.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jellyfin-service
+                port:
+                  number: 8096
+  # Uncomment for TLS
+  # tls:
+  #   - hosts:
+  #       - jellyfin.example.com
+  #     secretName: jellyfin-tls

@@ -1,0 +1,155 @@
+---
+# Jellyfin Deployment
+# Enhanced with Kubernetes best practices
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  namespace: jellyfin
+  labels:
+    app: jellyfin
+    app.kubernetes.io/name: jellyfin
+    app.kubernetes.io/component: media-server
+    app.kubernetes.io/part-of: vmstation
+spec:
+  replicas: 1
+  # Jellyfin is stateful, use Recreate strategy
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: jellyfin
+      component: media-server
+  template:
+    metadata:
+      labels:
+        app: jellyfin
+        component: media-server
+        app.kubernetes.io/name: jellyfin
+        app.kubernetes.io/component: media-server
+      annotations:
+        vmstation.io/network-mode: "host-bridge"
+    spec:
+      # Security context: Run as non-root user for better security
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: jellyfin
+          image: jellyfin/jellyfin:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8096
+              name: http
+              protocol: TCP
+            - containerPort: 8920
+              name: https
+              protocol: TCP
+            - containerPort: 1900
+              name: dlna
+              protocol: UDP
+            - containerPort: 7359
+              name: discovery
+              protocol: UDP
+          envFrom:
+            - configMapRef:
+                name: jellyfin-config
+          env:
+            - name: HEALTHCHECK_URL
+              value: "http://localhost:8096/health"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: jellyfin-config
+              mountPath: /config
+            - name: jellyfin-cache
+              mountPath: /cache
+            - name: jellyfin-media
+              mountPath: /media
+              readOnly: true
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          # Liveness probe - restart if unhealthy
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+              scheme: HTTP
+            initialDelaySeconds: 300
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 5
+            successThreshold: 1
+          # Readiness probe - remove from service if not ready
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+              scheme: HTTP
+            initialDelaySeconds: 240
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 10
+            successThreshold: 1
+          # Startup probe - allow extended startup time
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8096
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 40
+            successThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+      # DNS configuration for better name resolution
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
+          - name: edns0
+      volumes:
+        - name: jellyfin-config
+          persistentVolumeClaim:
+            claimName: jellyfin-config-pvc
+        - name: jellyfin-cache
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: jellyfin-media
+          # Default to emptyDir - override with hostPath in overlays
+          emptyDir:
+            sizeLimit: 1Gi
+      restartPolicy: Always
+      # Add tolerations for network-related node issues
+      tolerations:
+        - key: "node.kubernetes.io/network-unavailable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 300
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 300
