@@ -1,0 +1,44 @@
+---
+# Jellyfin deployment tasks (included by deploy-applications.yml)
+# This file contains the core Jellyfin deployment tasks
+
+- name: "Check if kustomize is installed"
+  ansible.builtin.command: which kustomize
+  register: kustomize_check
+  changed_when: false
+  failed_when: false
+
+- name: "Set kustomize command"
+  ansible.builtin.set_fact:
+    kustomize_cmd: "{{ 'kustomize' if kustomize_check.rc == 0 else 'kubectl kustomize' }}"
+
+- name: "Verify kustomization overlay exists"
+  ansible.builtin.stat:
+    path: "{{ kustomize_path }}/overlays/{{ environment }}/kustomization.yaml"
+  register: kustomize_overlay
+  failed_when: not kustomize_overlay.stat.exists
+
+- name: "Build and apply Jellyfin Kustomize overlay"
+  ansible.builtin.shell: |
+    {{ kustomize_cmd }} {{ kustomize_path }}/overlays/{{ environment }} | kubectl apply -f -
+  register: jellyfin_apply
+  changed_when: "'configured' in jellyfin_apply.stdout or 'created' in jellyfin_apply.stdout"
+
+- name: "Wait for Jellyfin deployment"
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: jellyfin
+    namespace: jellyfin
+  register: jellyfin_deploy
+  until: >
+    jellyfin_deploy.resources | length > 0 and
+    jellyfin_deploy.resources[0].status.readyReplicas is defined and
+    jellyfin_deploy.resources[0].status.readyReplicas >= 1
+  retries: 20
+  delay: 30
+  ignore_errors: true
+
+- name: "Log Jellyfin deployment status"
+  ansible.builtin.debug:
+    msg: "Jellyfin deployment {{ 'succeeded' if jellyfin_deploy is not failed else 'is still starting up' }}"

@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Metadata
+metadata:
+  name: jellyfin-base
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# Common labels applied to all resources
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/managed-by: kustomize
+      vmstation.io/component: media
+
+# Resources to include
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - persistentvolumeclaim.yaml
+  - deployment.yaml
+  - service.yaml
+  # Ingress is optional - enable in overlays as needed
+  # - ingress.yaml
+
+# Image configurations (can be overridden in overlays)
+images:
+  - name: jellyfin/jellyfin
+    newTag: latest

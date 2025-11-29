@@ -1,0 +1,76 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Staging overlay
+# Applies staging-specific configurations for testing
+
+metadata:
+  name: vmstation-apps-staging
+
+# Inherit from base
+resources:
+  - ../../base
+
+# Staging-specific labels
+labels:
+  - includeSelectors: false
+    pairs:
+      environment: staging
+
+# Staging patches
+patches:
+  # Jellyfin staging configuration
+  - target:
+      kind: ConfigMap
+      name: jellyfin-config
+      namespace: jellyfin
+    patch: |-
+      - op: replace
+        path: /data/JELLYFIN_PublishedServerUrl
+        value: "http://localhost:8096"
+      - op: replace
+        path: /data/JELLYFIN_LOG_LEVEL
+        value: "Debug"
+
+  # Reduced resources for staging
+  - target:
+      kind: Deployment
+      name: jellyfin
+      namespace: jellyfin
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "250m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+
+  # Staging resource quotas (smaller limits)
+  - target:
+      kind: ResourceQuota
+      name: applications-quota
+      namespace: vmstation-apps
+    patch: |-
+      - op: replace
+        path: /spec/hard/requests.cpu
+        value: "2"
+      - op: replace
+        path: /spec/hard/requests.memory
+        value: "4Gi"
+      - op: replace
+        path: /spec/hard/limits.cpu
+        value: "4"
+      - op: replace
+        path: /spec/hard/limits.memory
+        value: "8Gi"
+
+# Use latest tag for staging (for testing new versions)
+images:
+  - name: jellyfin/jellyfin
+    newTag: latest

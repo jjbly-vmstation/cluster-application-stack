@@ -1,0 +1,61 @@
+---
+# Resource Quota for application namespace
+# Prevents any single namespace from consuming all cluster resources
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: applications-quota
+  namespace: vmstation-apps
+  labels:
+    vmstation.io/component: resource-management
+spec:
+  hard:
+    # Compute resources
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    # Object count limits
+    pods: "20"
+    services: "10"
+    secrets: "10"
+    configmaps: "10"
+    persistentvolumeclaims: "10"
+    # Storage limits
+    requests.storage: 100Gi
+---
+# LimitRange for default resource limits
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: applications-limits
+  namespace: vmstation-apps
+  labels:
+    vmstation.io/component: resource-management
+spec:
+  limits:
+    - type: Container
+      # Default values if not specified
+      default:
+        cpu: "500m"
+        memory: 256Mi
+      defaultRequest:
+        cpu: "100m"
+        memory: 64Mi
+      # Maximum allowed
+      max:
+        cpu: "4"
+        memory: 4Gi
+      # Minimum allowed
+      min:
+        cpu: "10m"
+        memory: 16Mi
+    - type: Pod
+      max:
+        cpu: "8"
+        memory: 8Gi
+    - type: PersistentVolumeClaim
+      max:
+        storage: 50Gi
+      min:
+        storage: 1Gi

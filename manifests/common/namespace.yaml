@@ -1,0 +1,10 @@
+---
+# Common namespace for shared resources
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vmstation-apps
+  labels:
+    name: vmstation-apps
+    vmstation.io/component: applications
+    app.kubernetes.io/part-of: vmstation

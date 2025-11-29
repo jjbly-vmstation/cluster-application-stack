@@ -1,0 +1,128 @@
+---
+# Deploy all VMStation applications to Kubernetes cluster
+# Master playbook that orchestrates all application deployments
+#
+# Usage:
+#   ansible-playbook playbooks/deploy-applications.yml -e environment=production
+#   ansible-playbook playbooks/deploy-applications.yml -e environment=staging
+#   ansible-playbook playbooks/deploy-applications.yml -e environment=production --tags jellyfin
+#
+# Prerequisites:
+#   - Kubernetes cluster is running
+#   - kubectl is configured on the control plane node
+#   - Required storage and network configurations are in place
+
+- name: "Deploy VMStation Applications"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  
+  vars:
+    # Default environment
+    environment: production
+    
+    # Applications to deploy (can be overridden)
+    deploy_jellyfin: true
+    
+    # Paths
+    kustomize_path: "{{ playbook_dir }}/../kustomize"
+    manifests_path: "{{ playbook_dir }}/../manifests"
+    
+    # Deployment settings
+    wait_timeout: 600
+    
+  tasks:
+    - name: "Pre-deployment validation"
+      tags: [always]
+      block:
+        - name: "Validate environment selection"
+          ansible.builtin.assert:
+            that:
+              - environment in ['production', 'staging']
+            fail_msg: "Invalid environment '{{ environment }}'. Must be 'production' or 'staging'."
+
+        - name: "Verify cluster connectivity"
+          ansible.builtin.command: kubectl cluster-info
+          register: cluster_info
+          changed_when: false
+          failed_when: cluster_info.rc != 0
+
+        - name: "Display cluster information"
+          ansible.builtin.debug:
+            msg: "Connected to Kubernetes cluster: {{ cluster_info.stdout_lines | first }}"
+
+    - name: "Deploy common resources"
+      tags: [common]
+      block:
+        - name: "Apply common namespace"
+          kubernetes.core.k8s:
+            state: present
+            src: "{{ manifests_path }}/common/namespace.yaml"
+            wait: true
+
+        - name: "Apply resource quotas"
+          kubernetes.core.k8s:
+            state: present
+            src: "{{ manifests_path }}/common/resource-quotas.yaml"
+            wait: true
+
+    - name: "Deploy Jellyfin"
+      tags: [jellyfin]
+      when: deploy_jellyfin | bool
+      block:
+        - name: "Include Jellyfin deployment"
+          ansible.builtin.include_tasks:
+            file: deploy-jellyfin-tasks.yml
+          vars:
+            environment: "{{ environment }}"
+
+    - name: "Post-deployment verification"
+      tags: [always]
+      block:
+        - name: "Get all application pods"
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Pod
+            namespace: "{{ item }}"
+          loop:
+            - jellyfin
+            - vmstation-apps
+          register: all_pods
+          ignore_errors: true
+
+        - name: "Display deployment summary"
+          ansible.builtin.debug:
+            msg: |
+              ========================================
+              VMStation Application Deployment Summary
+              ========================================
+              Environment: {{ environment }}
+              
+              Deployed Namespaces:
+              {% for ns_result in all_pods.results %}
+              - {{ ns_result.item }}:
+              {% for pod in ns_result.resources | default([]) %}
+                - {{ pod.metadata.name }}: {{ pod.status.phase }}
+              {% endfor %}
+              {% endfor %}
+              ========================================
+
+- name: "Verify storage node configuration"
+  hosts: storage_nodes
+  become: true
+  gather_facts: false
+  tags: [storage, verify]
+  
+  tasks:
+    - name: "Check Jellyfin directories"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /var/lib/jellyfin
+        - /srv/media
+      register: dir_check
+
+    - name: "Display storage status"
+      ansible.builtin.debug:
+        msg: "{{ item.item }}: {{ 'EXISTS' if item.stat.exists else 'MISSING' }}"
+      loop: "{{ dir_check.results }}"

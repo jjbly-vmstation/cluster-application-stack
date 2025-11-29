@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Base configuration for all VMStation applications
+# This is the foundation for environment-specific overlays
+
+metadata:
+  name: vmstation-apps-base
+
+# Common labels for all resources
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/part-of: vmstation
+
+# Include manifest directories
+# Using relative paths from kustomize/base/ to manifests/
+resources:
+  - ../../manifests/common/
+  - ../../manifests/jellyfin/
