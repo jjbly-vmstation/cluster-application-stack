@@ -6,14 +6,17 @@ This directory contains Kustomize configurations for deploying VMStation applica
 
 ```
 kustomize/
-├── base/                    # Base configurations
-│   └── kustomization.yaml   # Includes all application manifests
+├── base/                    # Base configuration
+│   └── kustomization.yaml   # References manifests from ../manifests/
 └── overlays/
     ├── production/          # Production environment overlay
     │   └── kustomization.yaml
     └── staging/             # Staging environment overlay
         └── kustomization.yaml
 ```
+
+The base configuration references the canonical manifests in `manifests/` directory,
+avoiding duplication and ensuring a single source of truth.
 
 ## Usage
 

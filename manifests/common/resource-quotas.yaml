@@ -18,8 +18,8 @@ spec:
     # Object count limits
     pods: "20"
     services: "10"
-    secrets: "20"
-    configmaps: "20"
+    secrets: "10"
+    configmaps: "10"
     persistentvolumeclaims: "10"
     # Storage limits
     requests.storage: 100Gi
