@@ -10,6 +10,7 @@ The cluster-application-stack contains:
 - **Kubernetes manifests** with Kustomize overlays
 - **Ansible playbooks** for automated deployments
 
+
 ## Repository Structure
 
 ```
@@ -17,38 +18,19 @@ cluster-application-stack/
 ├── README.md                        # This file
 ├── IMPROVEMENTS_AND_STANDARDS.md    # Best practices documentation
 ├── manifests/                       # Kubernetes manifests
-│   ├── jellyfin/                    # Jellyfin media server
-│   │   ├── kustomization.yaml
-│   │   ├── namespace.yaml
-│   │   ├── deployment.yaml
-│   │   ├── service.yaml
-│   │   ├── configmap.yaml
-│   │   ├── persistentvolumeclaim.yaml
-│   │   └── ingress.yaml
-│   └── common/                      # Shared resources
-│       ├── namespace.yaml
-│       └── resource-quotas.yaml
 ├── kustomize/                       # Kustomize configurations
-│   ├── base/                        # Base configuration
-│   ├── overlays/
-│   │   ├── production/              # Production overlay
-│   │   └── staging/                 # Staging overlay
-│   └── README.md
 ├── helm-charts/                     # Helm charts (future)
-│   └── README.md
 ├── ansible/                         # Ansible automation
-│   ├── ansible.cfg
-│   ├── inventory/
-│   │   └── hosts.yml
-│   └── playbooks/
-│       ├── deploy-jellyfin.yml
-│       ├── deploy-applications.yml
-│       └── deploy-jellyfin-tasks.yml
-└── docs/                            # Documentation
-    ├── JELLYFIN_SETUP.md
-    ├── APPLICATION_DEPLOYMENT.md
-    └── STORAGE_CONFIGURATION.md
 ```
+
+## Documentation
+
+All detailed application and deployment documentation has been centralized in the [cluster-docs/components/](../cluster-docs/components/) directory. Please refer to that location for:
+- Application deployment guides
+- Jellyfin setup
+- Storage configuration
+
+This repository only contains the README and improvements/standards documentation.
 
 ## Quick Start
 
