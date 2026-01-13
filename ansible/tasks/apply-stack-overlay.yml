@@ -1,0 +1,24 @@
+---
+# Apply the full application stack kustomize overlay for the selected environment
+
+- name: "Check if kustomize is installed"
+  ansible.builtin.command: which kustomize
+  register: kustomize_check
+  changed_when: false
+  failed_when: false
+
+- name: "Set kustomize command"
+  ansible.builtin.set_fact:
+    kustomize_cmd: "{{ 'kustomize' if kustomize_check.rc == 0 else 'kubectl kustomize' }}"
+
+- name: "Verify kustomization overlay exists"
+  ansible.builtin.stat:
+    path: "{{ kustomize_path }}/overlays/{{ environment }}/kustomization.yaml"
+  register: kustomize_overlay
+  failed_when: not kustomize_overlay.stat.exists
+
+- name: "Build and apply VMStation application stack overlay"
+  ansible.builtin.shell: |
+    {{ kustomize_cmd }} {{ kustomize_path }}/overlays/{{ environment }} | kubectl apply -f -
+  register: apps_apply
+  changed_when: "'configured' in apps_apply.stdout or 'created' in apps_apply.stdout"

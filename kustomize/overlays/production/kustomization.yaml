@@ -39,9 +39,20 @@ patches:
       namespace: jellyfin
     patch: |-
       - op: add
-        path: /spec/template/spec/nodeSelector
+        path: /spec/template/spec/affinity
         value:
-          kubernetes.io/hostname: storagenodet3500
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values: ["storagenodet3500"]
+                - matchExpressions:
+                    - key: kubernetes.io/node_name
+                      operator: In
+                      values: ["storagenodet3500"]
+
 
   # Production service as NodePort
   - target:
@@ -58,6 +69,60 @@ patches:
       - op: add
         path: /spec/ports/1/nodePort
         value: 30920
+
+  # Nextcloud production node placement (local PV pinned to homelab)
+  - target:
+      kind: Deployment
+      name: nextcloud
+      namespace: nextcloud
+    patch: |-
+      - op: add
+        path: /spec/template/spec/affinity
+        value:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values: ["homelab"]
+                - matchExpressions:
+                    - key: kubernetes.io/node_name
+                      operator: In
+                      values: ["homelab"]
+
+  - target:
+      kind: Deployment
+      name: mariadb
+      namespace: nextcloud
+    patch: |-
+      - op: add
+        path: /spec/template/spec/affinity
+        value:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values: ["homelab"]
+                - matchExpressions:
+                    - key: kubernetes.io/node_name
+                      operator: In
+                      values: ["homelab"]
+
+  # Nextcloud production service as NodePort
+  - target:
+      kind: Service
+      name: nextcloud
+      namespace: nextcloud
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30081
 
 # Image tags for production (use specific versions, not latest)
 images:

@@ -16,8 +16,9 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  # StorageClass can be overridden in overlays
-  # storageClassName: local-path
+  # Bind to the static hostPath PV (pinned to storagenodet3500)
+  storageClassName: ""
+  volumeName: jellyfin-config-pv
 ---
 # Jellyfin Media PVC (optional - can use hostPath for large media)
 # Uncomment if using dynamic provisioning for media storage

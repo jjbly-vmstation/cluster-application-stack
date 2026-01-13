@@ -1,0 +1,17 @@
+---
+# Wrapper playbook for applying the full stack overlay.
+
+- name: "Apply VMStation Application Stack"
+  hosts: kube-master
+  become: true
+  gather_facts: true
+  vars:
+    environment: production
+    kustomize_path: "{{ playbook_dir }}/../../kustomize"
+  tasks:
+    - name: "Apply overlay"
+      ansible.builtin.include_tasks:
+        file: ../tasks/apply-stack-overlay.yml
+      vars:
+        environment: "{{ environment }}"
+        kustomize_path: "{{ kustomize_path }}"

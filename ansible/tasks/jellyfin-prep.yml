@@ -1,0 +1,25 @@
+---
+# Jellyfin preparation tasks (included by deploy-applications.yml)
+
+- name: "Prepare Jellyfin directories on storagenodet3500"
+  delegate_to: storagenodet3500
+  become: true
+  when: environment == 'production'
+  block:
+    - name: "Create Jellyfin config directory"
+      ansible.builtin.file:
+        path: /var/lib/jellyfin
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: '0755'
+
+    - name: "Verify Jellyfin media directory exists"
+      ansible.builtin.stat:
+        path: /mnt/media
+      register: jellyfin_media_dir
+
+    - name: "Fail if /mnt/media is missing on storagenodet3500"
+      ansible.builtin.fail:
+        msg: "/mnt/media does not exist on storagenodet3500; create/mount it before deploying Jellyfin."
+      when: not jellyfin_media_dir.stat.exists

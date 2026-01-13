@@ -1,0 +1,142 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nextcloud
+  namespace: nextcloud
+  labels:
+    app.kubernetes.io/name: nextcloud
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nextcloud
+  template:
+    metadata:
+      labels:
+        app: nextcloud
+        app.kubernetes.io/name: nextcloud
+        app.kubernetes.io/component: app
+    spec:
+      initContainers:
+        - name: install-oidc-login
+          image: alpine:3.19
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              apk add --no-cache curl tar >/dev/null
+              mkdir -p /var/www/html/custom_apps
+              if [ -f /var/www/html/custom_apps/oidc_login/appinfo/info.xml ]; then
+                echo "oidc_login already present"
+                exit 0
+              fi
+              tmpdir="/tmp/oidc"
+              mkdir -p "$tmpdir"
+              curl -fsSL -o "$tmpdir/oidc_login.tar.gz" \
+                https://github.com/pulsejet/nextcloud-oidc-login/releases/download/v3.2.2/oidc_login.tar.gz
+              tar -xzf "$tmpdir/oidc_login.tar.gz" -C /var/www/html/custom_apps
+              chown -R 33:33 /var/www/html/custom_apps/oidc_login || true
+          volumeMounts:
+            - name: nextcloud-html
+              mountPath: /var/www/html
+      containers:
+        - name: nextcloud
+          image: nextcloud:29-apache
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+          env:
+            - name: MYSQL_HOST
+              value: mariadb.nextcloud.svc.cluster.local
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: db-name
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: db-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: db-password
+            - name: NEXTCLOUD_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: admin-user
+            - name: NEXTCLOUD_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: admin-password
+            - name: NEXTCLOUD_TRUSTED_DOMAINS
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: trusted-domains
+            - name: OVERWRITEPROTOCOL
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: overwriteprotocol
+            - name: OVERWRITEHOST
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: overwritehost
+            - name: OVERWRITECLIURL
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: overwritecliurl
+            - name: OIDC_LOGIN_PROVIDER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: oidc-provider-url
+            - name: OIDC_LOGIN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: oidc-client-id
+            - name: OIDC_LOGIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: oidc-client-secret
+            - name: OIDC_LOGIN_LOGOUT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-secrets
+                  key: oidc-logout-url
+          volumeMounts:
+            - name: nextcloud-html
+              mountPath: /var/www/html
+            - name: nextcloud-entrypoint-hooks-post
+              mountPath: /docker-entrypoint-hooks.d/post-installation
+              readOnly: true
+          resources:
+            requests:
+              cpu: 300m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+      volumes:
+        - name: nextcloud-html
+          persistentVolumeClaim:
+            claimName: nextcloud-html-pvc
+        - name: nextcloud-entrypoint-hooks-post
+          configMap:
+            name: nextcloud-entrypoint-hooks
+            defaultMode: 0755

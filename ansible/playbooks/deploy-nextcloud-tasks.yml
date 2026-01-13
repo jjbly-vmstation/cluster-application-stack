@@ -1,16 +1,16 @@
 ---
-# Wrapper playbook for Jellyfin preparation tasks.
+# Wrapper playbook for Nextcloud preparation tasks.
 # Prefer running deploy-applications.yml for the full stack.
 
-- name: "Jellyfin Preparation"
+- name: "Nextcloud Preparation"
   hosts: kube-master
   become: true
   gather_facts: true
   vars:
     environment: production
   tasks:
-    - name: "Include Jellyfin preparation tasks"
+    - name: "Include Nextcloud preparation tasks"
       ansible.builtin.include_tasks:
-        file: ../tasks/jellyfin-prep.yml
+        file: ../tasks/nextcloud-prep.yml
       vars:
         environment: "{{ environment }}"

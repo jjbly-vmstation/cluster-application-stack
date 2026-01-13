@@ -19,3 +19,4 @@ labels:
 resources:
   - ../../manifests/common/
   - ../../manifests/jellyfin/
+  - ../../manifests/nextcloud/

@@ -133,15 +133,16 @@ spec:
           - name: edns0
       volumes:
         - name: jellyfin-config
-          persistentVolumeClaim:
-            claimName: jellyfin-config-pvc
+          hostPath:
+            path: /var/lib/jellyfin
+            type: Directory
         - name: jellyfin-cache
           emptyDir:
             sizeLimit: 10Gi
         - name: jellyfin-media
-          # Default to emptyDir - override with hostPath in overlays
-          emptyDir:
-            sizeLimit: 1Gi
+          hostPath:
+            path: /mnt/media
+            type: Directory
       restartPolicy: Always
       # Add tolerations for network-related node issues
       tolerations:

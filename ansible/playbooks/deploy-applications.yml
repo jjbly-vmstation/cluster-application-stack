@@ -13,7 +13,7 @@
 #   - Required storage and network configurations are in place
 
 - name: "Deploy VMStation Applications"
-  hosts: control_plane
+  hosts: kube-master
   become: true
   gather_facts: true
   
@@ -23,10 +23,11 @@
     
     # Applications to deploy (can be overridden)
     deploy_jellyfin: true
+    deploy_nextcloud: true
     
     # Paths
-    kustomize_path: "{{ playbook_dir }}/../kustomize"
-    manifests_path: "{{ playbook_dir }}/../manifests"
+    kustomize_path: "{{ playbook_dir }}/../../kustomize"
+    manifests_path: "{{ playbook_dir }}/../../manifests"
     
     # Deployment settings
     wait_timeout: 600
@@ -70,11 +71,62 @@
       tags: [jellyfin]
       when: deploy_jellyfin | bool
       block:
-        - name: "Include Jellyfin deployment"
+        - name: "Include Jellyfin preparation"
           ansible.builtin.include_tasks:
-            file: deploy-jellyfin-tasks.yml
+            file: ../tasks/jellyfin-prep.yml
           vars:
             environment: "{{ environment }}"
+
+    - name: "Deploy Nextcloud"
+      tags: [nextcloud]
+      when: deploy_nextcloud | bool
+      block:
+        - name: "Include Nextcloud preparation"
+          ansible.builtin.include_tasks:
+            file: ../tasks/nextcloud-prep.yml
+          vars:
+            environment: "{{ environment }}"
+
+    - name: "Apply application stack"
+      tags: [apply]
+      ansible.builtin.include_tasks:
+        file: ../tasks/apply-stack-overlay.yml
+      vars:
+        environment: "{{ environment }}"
+
+    - name: "Wait for Jellyfin deployment"
+      tags: [jellyfin]
+      when: deploy_jellyfin | bool
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: jellyfin
+        namespace: jellyfin
+      register: jellyfin_deploy
+      until: >
+        jellyfin_deploy.resources | length > 0 and
+        jellyfin_deploy.resources[0].status.readyReplicas is defined and
+        jellyfin_deploy.resources[0].status.readyReplicas >= 1
+      retries: 30
+      delay: 20
+      ignore_errors: true
+
+    - name: "Wait for Nextcloud deployment"
+      tags: [nextcloud]
+      when: deploy_nextcloud | bool
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: nextcloud
+        namespace: nextcloud
+      register: nextcloud_deploy
+      until: >
+        nextcloud_deploy.resources | length > 0 and
+        nextcloud_deploy.resources[0].status.readyReplicas is defined and
+        nextcloud_deploy.resources[0].status.readyReplicas >= 1
+      retries: 40
+      delay: 20
+      ignore_errors: true
 
     - name: "Post-deployment verification"
       tags: [always]
@@ -86,6 +138,7 @@
             namespace: "{{ item }}"
           loop:
             - jellyfin
+            - nextcloud
             - vmstation-apps
           register: all_pods
           ignore_errors: true
@@ -119,10 +172,30 @@
         path: "{{ item }}"
       loop:
         - /var/lib/jellyfin
-        - /srv/media
+        - /mnt/media
       register: dir_check
 
     - name: "Display storage status"
       ansible.builtin.debug:
         msg: "{{ item.item }}: {{ 'EXISTS' if item.stat.exists else 'MISSING' }}"
       loop: "{{ dir_check.results }}"
+
+- name: "Verify compute node configuration"
+  hosts: compute_nodes
+  become: true
+  gather_facts: false
+  tags: [compute, verify]
+
+  tasks:
+    - name: "Check Nextcloud directories"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /srv/nextcloud/nextcloud
+        - /srv/nextcloud/mariadb
+      register: nextcloud_dir_check
+
+    - name: "Display compute node storage status"
+      ansible.builtin.debug:
+        msg: "{{ item.item }}: {{ 'EXISTS' if item.stat.exists else 'MISSING' }}"
+      loop: "{{ nextcloud_dir_check.results }}"

@@ -18,7 +18,6 @@ labels:
 resources:
   - namespace.yaml
   - configmap.yaml
-  - persistentvolumeclaim.yaml
   - deployment.yaml
   - service.yaml
   # Ingress is optional - enable in overlays as needed

@@ -1,0 +1,53 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nextcloud-entrypoint-hooks
+  namespace: nextcloud
+  labels:
+    app.kubernetes.io/name: nextcloud
+    app.kubernetes.io/component: app
+data:
+  010-oidc-login.sh: |
+    #!/bin/sh
+    set -eu
+
+    if [ -z "${OIDC_LOGIN_PROVIDER_URL:-}" ] || [ -z "${OIDC_LOGIN_CLIENT_ID:-}" ] || [ -z "${OIDC_LOGIN_CLIENT_SECRET:-}" ]; then
+      echo "OIDC env not set; skipping oidc_login config"
+      exit 0
+    fi
+
+    if [ ! -f /var/www/html/config/config.php ]; then
+      echo "Nextcloud config.php missing; skipping oidc_login config"
+      exit 0
+    fi
+
+    occ() {
+      su -s /bin/sh www-data -c "php -f /var/www/html/occ $*" 
+    }
+
+    echo "Enabling oidc_login app"
+    occ app:enable oidc_login || true
+
+    echo "Configuring oidc_login provider/client"
+    occ config:system:set oidc_login_provider_url --type=string --value="${OIDC_LOGIN_PROVIDER_URL}"
+    occ config:system:set oidc_login_client_id --type=string --value="${OIDC_LOGIN_CLIENT_ID}"
+    occ config:system:set oidc_login_client_secret --type=string --value="${OIDC_LOGIN_CLIENT_SECRET}"
+
+    occ config:system:set oidc_login_auto_redirect --type=boolean --value="${OIDC_LOGIN_AUTO_REDIRECT:-true}"
+    occ config:system:set oidc_login_redir_fallback --type=boolean --value="${OIDC_LOGIN_REDIR_FALLBACK:-true}"
+
+    if [ -n "${OIDC_LOGIN_LOGOUT_URL:-}" ]; then
+      occ config:system:set oidc_login_logout_url --type=string --value="${OIDC_LOGIN_LOGOUT_URL}"
+    fi
+
+    if [ "${OIDC_LOGIN_END_SESSION_REDIRECT:-true}" = "true" ]; then
+      occ config:system:set oidc_login_end_session_redirect --type=boolean --value=true
+    fi
+
+    if [ -n "${OIDC_LOGIN_CODE_CHALLENGE_METHOD:-}" ]; then
+      occ config:system:set oidc_login_code_challenge_method --type=string --value="${OIDC_LOGIN_CODE_CHALLENGE_METHOD}"
+    fi
+
+    echo "Setting oidc_login attribute mapping"
+    occ config:system:set oidc_login_attributes --type=json --value='{"id":"preferred_username","mail":"email"}'

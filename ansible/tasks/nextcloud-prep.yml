@@ -1,0 +1,99 @@
+---
+# Nextcloud preparation tasks (included by deploy-applications.yml)
+
+- name: "Ensure nextcloud namespace exists"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: nextcloud
+
+- name: "Prepare Nextcloud storage directories on homelab"
+  delegate_to: homelab
+  become: true
+  block:
+    - name: "Create Nextcloud data directories"
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: /srv/nextcloud/nextcloud, owner: '33', group: '33', mode: '0750' }
+        - { path: /srv/nextcloud/mariadb, owner: '999', group: '999', mode: '0750' }
+
+- name: "Fetch Keycloak admin credentials from cluster secret"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    user=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.username}' | base64 -d)
+    pass=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.password}' | base64 -d)
+    printf '%s\n' "$user" "$pass"
+  register: keycloak_admin_creds
+  changed_when: false
+
+- name: "Set Keycloak and Nextcloud variables"
+  ansible.builtin.set_fact:
+    keycloak_admin_user: "{{ keycloak_admin_creds.stdout_lines[0] }}"
+    keycloak_admin_password: "{{ keycloak_admin_creds.stdout_lines[1] }}"
+    keycloak_url_effective: "{{ keycloak_url | default('http://' + ansible_default_ipv4.address + ':30180') }}"
+    keycloak_realm_effective: "{{ keycloak_realm | default('cluster-services') }}"
+    nextcloud_external_url_effective: "{{ nextcloud_external_url | default('http://' + hostvars['homelab']['ansible_host'] + ':30081') }}"
+    nextcloud_external_host: "{{ (nextcloud_external_url | default('http://' + hostvars['homelab']['ansible_host'] + ':30081')) | regex_replace('^https?://', '') | regex_replace('/.*$', '') | regex_replace(':.*$', '') }}"
+    nextcloud_external_hostport: "{{ (nextcloud_external_url | default('http://' + hostvars['homelab']['ansible_host'] + ':30081')) | regex_replace('^https?://', '') | regex_replace('/.*$', '') }}"
+
+- name: "Ensure Keycloak client for Nextcloud exists"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    script="{{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh"
+    clients='[{"name":"nextcloud","redirectUris":["{{ nextcloud_external_url_effective }}/index.php/apps/oidc_login/oidc","{{ nextcloud_external_url_effective }}/apps/oidc_login/oidc","{{ nextcloud_external_url_effective }}/*"],"baseUrl":"{{ nextcloud_external_url_effective }}/","webOrigins":["{{ nextcloud_external_url_effective | regex_replace('/$','') }}"]}]'
+    KEYCLOAK_ADMIN_USER="{{ keycloak_admin_user }}" KEYCLOAK_ADMIN_PASSWORD="{{ keycloak_admin_password }}" \
+      bash "$script" --realm "{{ keycloak_realm_effective }}" --namespace identity --clients "$clients"
+  register: keycloak_client_apply
+  changed_when: "'Creating/updating client' in keycloak_client_apply.stdout"
+
+- name: "Read Nextcloud client secret from identity namespace"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl -n identity get secret keycloak-nextcloud-client-secret -o jsonpath='{.data.client_secret}' | base64 -d
+  register: nextcloud_client_secret
+  changed_when: false
+
+- name: "Check if nextcloud-secrets already exists"
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: nextcloud-secrets
+    namespace: nextcloud
+  register: nextcloud_secrets_info
+  failed_when: false
+  changed_when: false
+
+- name: "Create nextcloud-secrets once (do not rotate on reruns)"
+  when: nextcloud_secrets_info.resources | default([]) | length == 0
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: nextcloud-secrets
+        namespace: nextcloud
+      type: Opaque
+      stringData:
+        db-name: "{{ nextcloud_db_name | default('nextcloud') }}"
+        db-user: "{{ nextcloud_db_user | default('nextcloud') }}"
+        db-password: "{{ nextcloud_db_password | default(lookup('password', '/dev/null length=32 chars=ascii_letters,digits')) }}"
+        mariadb-root-password: "{{ nextcloud_mariadb_root_password | default(lookup('password', '/dev/null length=32 chars=ascii_letters,digits')) }}"
+        admin-user: "{{ nextcloud_admin_user | default('admin') }}"
+        admin-password: "{{ nextcloud_admin_password | default(lookup('password', '/dev/null length=32 chars=ascii_letters,digits')) }}"
+        oidc-provider-url: "{{ keycloak_url_effective }}/auth/realms/{{ keycloak_realm_effective }}"
+        oidc-client-id: "nextcloud"
+        oidc-client-secret: "{{ nextcloud_client_secret.stdout }}"
+        oidc-logout-url: "{{ keycloak_url_effective }}/auth/realms/{{ keycloak_realm_effective }}/protocol/openid-connect/logout"
+        trusted-domains: "{{ nextcloud_external_host }}"
+        overwritehost: "{{ nextcloud_external_hostport }}"
+        overwriteprotocol: "{{ (nextcloud_external_url_effective | regex_search('^https?')) | default('http') }}"
+        overwritecliurl: "{{ nextcloud_external_url_effective }}"

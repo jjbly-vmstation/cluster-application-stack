@@ -70,6 +70,16 @@ patches:
         path: /spec/hard/limits.memory
         value: "8Gi"
 
+  # Nextcloud staging: keep ClusterIP service
+  - target:
+      kind: Service
+      name: nextcloud
+      namespace: nextcloud
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: ClusterIP
+
 # Use latest tag for staging (for testing new versions)
 images:
   - name: jellyfin/jellyfin
