@@ -17,6 +17,10 @@
   delegate_to: homelab
   become: true
   block:
+    - name: "Ensure jq is installed on control-plane (required for Keycloak client creation script)"
+      ansible.builtin.package:
+        name: jq
+        state: present
     - name: "Create Nextcloud data directories"
       ansible.builtin.file:
         path: "{{ item.path }}"
