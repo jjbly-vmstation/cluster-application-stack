@@ -10,17 +10,20 @@
     kubectl create namespace nextcloud
   args:
     executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: nextcloud_ns_create
   changed_when: "'created' in (nextcloud_ns_create.stdout | lower)"
+
+- name: "Ensure jq is installed on control-plane (required for Keycloak client creation script)"
+  ansible.builtin.package:
+    name: jq
+    state: present
 
 - name: "Prepare Nextcloud storage directories on homelab"
   delegate_to: homelab
   become: true
   block:
-    - name: "Ensure jq is installed on control-plane (required for Keycloak client creation script)"
-      ansible.builtin.package:
-        name: jq
-        state: present
     - name: "Create Nextcloud data directories"
       ansible.builtin.file:
         path: "{{ item.path }}"
@@ -40,6 +43,8 @@
     printf '%s\n' "$user" "$pass"
   args:
     executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: keycloak_admin_creds
   changed_when: false
   no_log: true
@@ -55,18 +60,88 @@
     nextcloud_external_hostport: "{{ (nextcloud_external_url | default('http://' + hostvars['homelab']['ansible_host'] + ':30081')) | regex_replace('^https?://', '') | regex_replace('/.*$', '') }}"
   no_log: true
 
+- name: "Build Keycloak client definition for Nextcloud"
+  ansible.builtin.set_fact:
+    nextcloud_keycloak_clients_json: >-
+      {{
+        [
+          {
+            'name': 'nextcloud',
+            'redirectUris': [
+              nextcloud_external_url_effective + '/index.php/apps/oidc_login/oidc',
+              nextcloud_external_url_effective + '/apps/oidc_login/oidc',
+              nextcloud_external_url_effective + '/*'
+            ],
+            'baseUrl': nextcloud_external_url_effective + '/',
+            'webOrigins': [ (nextcloud_external_url_effective | regex_replace('/$','')) ]
+          }
+        ] | to_json
+      }}
+
+- name: "Verify Keycloak client creation script exists"
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh"
+  register: keycloak_clients_script_stat
+
+- name: "Fail if Keycloak client creation script is missing"
+  ansible.builtin.fail:
+    msg: "Missing script: {{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh (ensure cluster-infra repo is present at /opt/vmstation-org/cluster-infra)"
+  when: not keycloak_clients_script_stat.stat.exists
+
+- name: "Ensure Keycloak client creation script is executable"
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh"
+    mode: '0755'
+
 - name: "Ensure Keycloak client for Nextcloud exists"
-  ansible.builtin.shell: |
-    set -euo pipefail
-    script="{{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh"
-    clients='[{"name":"nextcloud","redirectUris":["{{ nextcloud_external_url_effective }}/index.php/apps/oidc_login/oidc","{{ nextcloud_external_url_effective }}/apps/oidc_login/oidc","{{ nextcloud_external_url_effective }}/*"],"baseUrl":"{{ nextcloud_external_url_effective }}/","webOrigins":["{{ nextcloud_external_url_effective | regex_replace('/$','') }}"]}]'
-    KEYCLOAK_ADMIN_USER="{{ keycloak_admin_user }}" KEYCLOAK_ADMIN_PASSWORD="{{ keycloak_admin_password }}" \
-      bash "$script" --realm "{{ keycloak_realm_effective }}" --namespace identity --clients "$clients"
-  args:
-    executable: /bin/bash
+  ansible.builtin.command:
+    argv:
+      - bash
+      - "{{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh"
+      - --realm
+      - "{{ keycloak_realm_effective }}"
+      - --namespace
+      - identity
+      - --clients
+      - "{{ nextcloud_keycloak_clients_json }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+    KEYCLOAK_ADMIN_USER: "{{ keycloak_admin_user }}"
+    KEYCLOAK_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
   register: keycloak_client_apply
-  changed_when: "'Creating/updating client' in keycloak_client_apply.stdout"
+  changed_when: false
+  failed_when: false
   no_log: true
+
+- name: "Capture Keycloak pod status (for diagnostics)"
+  when: keycloak_client_apply.rc != 0
+  ansible.builtin.command: kubectl -n identity get pods -l app.kubernetes.io/name=keycloak -o wide
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: keycloak_pods_diag
+  changed_when: false
+  failed_when: false
+
+- name: "Capture Keycloak logs tail (for diagnostics)"
+  when: keycloak_client_apply.rc != 0
+  ansible.builtin.command: kubectl -n identity logs -l app.kubernetes.io/name=keycloak --tail=200
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: keycloak_logs_diag
+  changed_when: false
+  failed_when: false
+
+- name: "Fail with actionable diagnostics if Keycloak client creation failed"
+  when: keycloak_client_apply.rc != 0
+  ansible.builtin.fail:
+    msg: |
+      Keycloak client creation for Nextcloud failed (exit code {{ keycloak_client_apply.rc }}).
+      
+      Keycloak pods:
+      {{ (keycloak_pods_diag.stdout | default('(no output)')) }}
+      
+      Keycloak logs (tail):
+      {{ (keycloak_logs_diag.stdout | default('(no output)')) }}
 
 - name: "Read Nextcloud client secret from identity namespace"
   ansible.builtin.shell: |
@@ -74,12 +149,16 @@
     kubectl -n identity get secret keycloak-nextcloud-client-secret -o jsonpath='{.data.client_secret}' | base64 -d
   args:
     executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: nextcloud_client_secret
   changed_when: false
   no_log: true
 
 - name: "Check if nextcloud-secrets already exists"
   ansible.builtin.command: kubectl -n nextcloud get secret nextcloud-secrets
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: nextcloud_secrets_get
   changed_when: false
   failed_when: false
@@ -120,6 +199,8 @@
 - name: "Apply nextcloud-secrets once (do not rotate on reruns)"
   when: not nextcloud_secrets_exists
   ansible.builtin.command: kubectl apply -f /tmp/nextcloud-secrets.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: nextcloud_secrets_apply
   changed_when: "'created' in nextcloud_secrets_apply.stdout or 'configured' in nextcloud_secrets_apply.stdout"
   no_log: true
