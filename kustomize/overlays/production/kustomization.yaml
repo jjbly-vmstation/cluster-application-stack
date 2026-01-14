@@ -70,6 +70,45 @@ patches:
         path: /spec/ports/1/nodePort
         value: 30920
 
+  # Jellyfin oauth2-proxy (SSO front door)
+  - target:
+      kind: Deployment
+      name: jellyfin-oauth2-proxy
+      namespace: jellyfin
+    patch: |-
+      - op: add
+        path: /spec/template/spec/affinity
+        value:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values: ["storagenodet3500"]
+                - matchExpressions:
+                    - key: kubernetes.io/node_name
+                      operator: In
+                      values: ["storagenodet3500"]
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: "http://192.168.4.61:30097/oauth2/callback"
+
+  - target:
+      kind: Service
+      name: jellyfin-sso
+      namespace: jellyfin
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/externalTrafficPolicy
+        value: Local
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30097
+
   # Nextcloud production node placement (local PV pinned to homelab)
   - target:
       kind: Deployment

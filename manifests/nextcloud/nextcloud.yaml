@@ -29,7 +29,6 @@ spec:
             - /bin/sh
             - -ec
             - |
-              apk add --no-cache curl tar >/dev/null
               mkdir -p /var/www/html/custom_apps
               if [ -f /var/www/html/custom_apps/oidc_login/appinfo/info.xml ]; then
                 echo "oidc_login already present"
@@ -37,7 +36,9 @@ spec:
               fi
               tmpdir="/tmp/oidc"
               mkdir -p "$tmpdir"
-              curl -fsSL -o "$tmpdir/oidc_login.tar.gz" \
+              # Avoid apk installs at runtime (can fail if Alpine mirrors are unreachable).
+              # Alpine base includes BusyBox wget and tar.
+              wget -qO "$tmpdir/oidc_login.tar.gz" \
                 https://github.com/pulsejet/nextcloud-oidc-login/releases/download/v3.2.2/oidc_login.tar.gz
               tar -xzf "$tmpdir/oidc_login.tar.gz" -C /var/www/html/custom_apps
               chown -R 33:33 /var/www/html/custom_apps/oidc_login || true

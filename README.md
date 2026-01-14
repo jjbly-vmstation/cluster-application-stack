@@ -88,7 +88,11 @@ A self-hosted media streaming solution.
 | NodePort | 30096 (HTTP), 30920 (HTTPS) |
 | Node | storagenodet3500 |
 
-**Access**: http://192.168.4.61:30096
+**Access (direct, no SSO)**: http://192.168.4.61:30096
+
+**Access (web SSO via oauth2-proxy)**: http://192.168.4.61:30097
+
+Note: Jellyfin native clients (TV/phone apps) generally do not work well behind oauth2-proxy because it requires a browser-based OIDC login flow and cookie handling. Use the direct endpoint for apps, and the SSO endpoint for browser access.
 
 For setup details, see [docs/JELLYFIN_SETUP.md](docs/JELLYFIN_SETUP.md).
 

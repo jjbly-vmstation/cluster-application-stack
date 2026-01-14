@@ -57,6 +57,34 @@ patches:
         path: /spec/ports/1/nodePort
         value: 30920
 
+  - target:
+      kind: Deployment
+      name: jellyfin-oauth2-proxy
+      namespace: jellyfin
+    patch: |-
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value:
+          kubernetes.io/hostname: storagenodet3500
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: "http://192.168.4.61:30097/oauth2/callback"
+
+  - target:
+      kind: Service
+      name: jellyfin-sso
+      namespace: jellyfin
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/externalTrafficPolicy
+        value: Local
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30097
+
 images:
   - name: jellyfin/jellyfin
     newTag: "10.9.11"

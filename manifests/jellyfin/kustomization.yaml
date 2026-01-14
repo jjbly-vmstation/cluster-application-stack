@@ -20,6 +20,8 @@ resources:
   - configmap.yaml
   - deployment.yaml
   - service.yaml
+  - oauth2-proxy-deployment.yaml
+  - oauth2-proxy-service.yaml
   # Ingress is optional - enable in overlays as needed
   # - ingress.yaml
 

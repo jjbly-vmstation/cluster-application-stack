@@ -23,3 +23,210 @@
       ansible.builtin.fail:
         msg: "/mnt/media does not exist on storagenodet3500; create/mount it before deploying Jellyfin."
       when: not jellyfin_media_dir.stat.exists
+
+- name: "Ensure jellyfin namespace exists (needed for SSO secrets)"
+  when: deploy_environment == 'production'
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if kubectl get namespace jellyfin >/dev/null 2>&1; then
+      exit 0
+    fi
+    kubectl create namespace jellyfin
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: jellyfin_ns_create
+  changed_when: "'created' in (jellyfin_ns_create.stdout | lower)"
+
+- name: "Ensure jq is installed on control-plane (required for Keycloak client creation script)"
+  when: deploy_environment == 'production'
+  ansible.builtin.package:
+    name: jq
+    state: present
+
+- name: "Fetch Keycloak admin credentials from cluster secret"
+  when: deploy_environment == 'production'
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # Primary: chart-managed Keycloak secret (identity stack source-of-truth)
+    if kubectl -n identity get secret keycloak-admin >/dev/null 2>&1; then
+      user=$(kubectl -n identity get secret keycloak-admin -o jsonpath='{.data.KEYCLOAK_USER}' | base64 -d)
+      pass=$(kubectl -n identity get secret keycloak-admin -o jsonpath='{.data.KEYCLOAK_PASSWORD}' | base64 -d)
+      printf '%s\n' "$user" "$pass"
+      exit 0
+    fi
+
+    # Fallback: legacy credentials secret (some older flows)
+    if kubectl -n identity get secret keycloak-admin-creds >/dev/null 2>&1; then
+      user=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.username}' | base64 -d)
+      pass=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.password}' | base64 -d)
+      printf '%s\n' "$user" "$pass"
+      exit 0
+    fi
+
+    echo "ERROR: Could not find Keycloak admin credentials secret (tried keycloak-admin and keycloak-admin-creds)" >&2
+    exit 1
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: keycloak_admin_creds
+  changed_when: false
+  no_log: true
+
+- name: "Set Keycloak and Jellyfin SSO variables"
+  when: deploy_environment == 'production'
+  ansible.builtin.set_fact:
+    keycloak_admin_user: "{{ keycloak_admin_creds.stdout_lines[0] }}"
+    keycloak_admin_password: "{{ keycloak_admin_creds.stdout_lines[1] }}"
+    keycloak_url_effective: "{{ keycloak_url | default('http://' + ansible_default_ipv4.address + ':30180') }}"
+    keycloak_realm_effective: "{{ keycloak_realm | default('cluster-services') }}"
+    jellyfin_sso_external_url_effective: "{{ jellyfin_sso_external_url | default('http://' + hostvars['storagenodet3500']['ansible_host'] + ':30097') }}"
+  no_log: true
+
+- name: "Build Keycloak client definition for Jellyfin oauth2-proxy"
+  when: deploy_environment == 'production'
+  ansible.builtin.set_fact:
+    jellyfin_keycloak_clients_json: >-
+      {{
+        [
+          {
+            'name': 'jellyfin',
+            'redirectUris': [
+              jellyfin_sso_external_url_effective + '/oauth2/callback',
+              jellyfin_sso_external_url_effective + '/*'
+            ],
+            'baseUrl': jellyfin_sso_external_url_effective + '/',
+            'webOrigins': [ (jellyfin_sso_external_url_effective | regex_replace('/$','')) ]
+          }
+        ] | to_json
+      }}
+
+- name: "Verify Keycloak client creation script exists"
+  when: deploy_environment == 'production'
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh"
+  register: keycloak_clients_script_stat
+
+- name: "Fail if Keycloak client creation script is missing"
+  ansible.builtin.fail:
+    msg: "Missing script: {{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh (ensure cluster-infra repo is present at /opt/vmstation-org/cluster-infra)"
+  when: deploy_environment == 'production' and not keycloak_clients_script_stat.stat.exists
+
+- name: "Ensure Keycloak client creation script is executable"
+  when: deploy_environment == 'production'
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh"
+    mode: '0755'
+
+- name: "Ensure Keycloak client for Jellyfin oauth2-proxy exists"
+  when: deploy_environment == 'production'
+  ansible.builtin.command:
+    argv:
+      - bash
+      - "{{ playbook_dir }}/../../../cluster-infra/scripts/keycloak-create-clients.sh"
+      - --realm
+      - "{{ keycloak_realm_effective }}"
+      - --namespace
+      - identity
+      - --clients
+      - "{{ jellyfin_keycloak_clients_json }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+    KEYCLOAK_ADMIN_USER: "{{ keycloak_admin_user }}"
+    KEYCLOAK_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
+  register: keycloak_client_apply
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: "Capture Keycloak pod status (for diagnostics)"
+  when: deploy_environment == 'production' and keycloak_client_apply.rc != 0
+  ansible.builtin.command: kubectl -n identity get pods -l app.kubernetes.io/name=keycloak -o wide
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: keycloak_pods_diag
+  changed_when: false
+  failed_when: false
+
+- name: "Capture Keycloak logs tail (for diagnostics)"
+  when: deploy_environment == 'production' and keycloak_client_apply.rc != 0
+  ansible.builtin.command: kubectl -n identity logs -l app.kubernetes.io/name=keycloak --tail=200
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: keycloak_logs_diag
+  changed_when: false
+  failed_when: false
+
+- name: "Fail with actionable diagnostics if Keycloak client creation failed"
+  when: deploy_environment == 'production' and keycloak_client_apply.rc != 0
+  ansible.builtin.fail:
+    msg: |
+      Keycloak client creation for Jellyfin oauth2-proxy failed (exit code {{ keycloak_client_apply.rc }}).
+
+      Keycloak pods:
+      {{ (keycloak_pods_diag.stdout | default('(no output)')) }}
+
+      Keycloak logs (tail):
+      {{ (keycloak_logs_diag.stdout | default('(no output)')) }}
+
+- name: "Read Jellyfin client secret from identity namespace"
+  when: deploy_environment == 'production'
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl -n identity get secret keycloak-jellyfin-client-secret -o jsonpath='{.data.client_secret}' | base64 -d
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: jellyfin_client_secret
+  changed_when: false
+  no_log: true
+
+- name: "Check if jellyfin-oauth2-proxy-secrets already exists"
+  when: deploy_environment == 'production'
+  ansible.builtin.command: kubectl -n jellyfin get secret jellyfin-oauth2-proxy-secrets
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: jellyfin_oauth2_secrets_get
+  changed_when: false
+  failed_when: false
+
+- name: "Set jellyfin oauth2-proxy secret exists flag"
+  when: deploy_environment == 'production'
+  ansible.builtin.set_fact:
+    jellyfin_oauth2_secrets_exists: "{{ jellyfin_oauth2_secrets_get.rc == 0 }}"
+
+- name: "Create jellyfin-oauth2-proxy-secrets manifest (temp file)"
+  when: deploy_environment == 'production' and not jellyfin_oauth2_secrets_exists
+  ansible.builtin.copy:
+    dest: /tmp/jellyfin-oauth2-proxy-secrets.yaml
+    mode: '0600'
+    content: |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: jellyfin-oauth2-proxy-secrets
+        namespace: jellyfin
+      type: Opaque
+      stringData:
+        client-secret: "{{ jellyfin_client_secret.stdout }}"
+        cookie-secret: "{{ jellyfin_oauth2_cookie_secret | default(lookup('password', '/dev/null length=32 chars=ascii_letters,digits')) }}"
+  no_log: true
+
+- name: "Apply jellyfin-oauth2-proxy-secrets once (do not rotate on reruns)"
+  when: deploy_environment == 'production' and not jellyfin_oauth2_secrets_exists
+  ansible.builtin.command: kubectl apply -f /tmp/jellyfin-oauth2-proxy-secrets.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: jellyfin_oauth2_secrets_apply
+  changed_when: "'created' in jellyfin_oauth2_secrets_apply.stdout or 'configured' in jellyfin_oauth2_secrets_apply.stdout"
+  no_log: true
+
+- name: "Remove temp jellyfin-oauth2-proxy-secrets manifest"
+  when: deploy_environment == 'production' and not jellyfin_oauth2_secrets_exists
+  ansible.builtin.file:
+    path: /tmp/jellyfin-oauth2-proxy-secrets.yaml
+    state: absent
+  changed_when: false
