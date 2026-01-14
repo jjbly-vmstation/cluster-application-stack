@@ -35,6 +35,50 @@
         - { path: /srv/nextcloud/nextcloud, owner: '33', group: '33', mode: '0750' }
         - { path: /srv/nextcloud/mariadb, owner: '999', group: '999', mode: '0750' }
 
+    - name: "Check if Nextcloud oidc_login app is already present on the hostPath PVC"
+      ansible.builtin.stat:
+        path: /srv/nextcloud/nextcloud/custom_apps/oidc_login/appinfo/info.xml
+      register: nextcloud_oidc_info
+
+    - name: "Ensure custom_apps directory exists on the hostPath PVC"
+      when: not nextcloud_oidc_info.stat.exists
+      ansible.builtin.file:
+        path: /srv/nextcloud/nextcloud/custom_apps
+        state: directory
+        owner: '33'
+        group: '33'
+        mode: '0750'
+
+    - name: "Download oidc_login release tarball to homelab"
+      when: not nextcloud_oidc_info.stat.exists
+      ansible.builtin.get_url:
+        url: https://github.com/pulsejet/nextcloud-oidc-login/releases/download/v3.2.2/oidc_login.tar.gz
+        dest: /tmp/oidc_login.tar.gz
+        mode: '0644'
+
+    - name: "Extract oidc_login into custom_apps on the hostPath PVC"
+      when: not nextcloud_oidc_info.stat.exists
+      ansible.builtin.unarchive:
+        src: /tmp/oidc_login.tar.gz
+        dest: /srv/nextcloud/nextcloud/custom_apps
+        remote_src: true
+
+    - name: "Ensure oidc_login ownership is correct on the hostPath PVC"
+      when: not nextcloud_oidc_info.stat.exists
+      ansible.builtin.file:
+        path: /srv/nextcloud/nextcloud/custom_apps/oidc_login
+        state: directory
+        recurse: true
+        owner: '33'
+        group: '33'
+        mode: '0750'
+
+    - name: "Remove temporary oidc_login tarball"
+      when: not nextcloud_oidc_info.stat.exists
+      ansible.builtin.file:
+        path: /tmp/oidc_login.tar.gz
+        state: absent
+
 - name: "Fetch Keycloak admin credentials from cluster secret"
   ansible.builtin.shell: |
     set -euo pipefail
