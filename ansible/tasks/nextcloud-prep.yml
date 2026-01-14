@@ -49,8 +49,9 @@
         group: '33'
         mode: '0750'
 
-    - name: "Download oidc_login release tarball to homelab"
+    - name: "Download oidc_login release tarball to control-plane (for transfer to homelab)"
       when: not nextcloud_oidc_info.stat.exists
+      delegate_to: masternode
       ansible.builtin.get_url:
         url: https://github.com/pulsejet/nextcloud-oidc-login/releases/download/v3.2.2/oidc_login.tar.gz
         dest: /tmp/oidc_login.tar.gz
@@ -61,7 +62,7 @@
       ansible.builtin.unarchive:
         src: /tmp/oidc_login.tar.gz
         dest: /srv/nextcloud/nextcloud/custom_apps
-        remote_src: true
+        remote_src: false
 
     - name: "Ensure oidc_login ownership is correct on the hostPath PVC"
       when: not nextcloud_oidc_info.stat.exists
@@ -73,11 +74,24 @@
         group: '33'
         mode: '0750'
 
-    - name: "Remove temporary oidc_login tarball"
+    - name: "Remove temporary oidc_login tarball from control-plane"
+      when: not nextcloud_oidc_info.stat.exists
+      delegate_to: masternode
+      ansible.builtin.file:
+        path: /tmp/oidc_login.tar.gz
+        state: absent
+
+    - name: "Remove temporary oidc_login tarball from homelab (best-effort)"
       when: not nextcloud_oidc_info.stat.exists
       ansible.builtin.file:
         path: /tmp/oidc_login.tar.gz
         state: absent
+  rescue:
+    - name: "Show Nextcloud OIDC preinstall debug info"
+      ansible.builtin.debug:
+        msg: |
+          Nextcloud OIDC hostPath preinstall failed.
+          If this is a TLS/certs issue on the control-plane, verify masternode can reach GitHub.
 
 - name: "Fetch Keycloak admin credentials from cluster secret"
   ansible.builtin.shell: |
