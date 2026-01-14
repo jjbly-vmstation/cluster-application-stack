@@ -2,13 +2,16 @@
 # Nextcloud preparation tasks (included by deploy-applications.yml)
 
 - name: "Ensure nextcloud namespace exists"
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: Namespace
-      metadata:
-        name: nextcloud
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if kubectl get namespace nextcloud >/dev/null 2>&1; then
+      exit 0
+    fi
+    kubectl create namespace nextcloud
+  args:
+    executable: /bin/bash
+  register: nextcloud_ns_create
+  changed_when: "'created' in (nextcloud_ns_create.stdout | lower)"
 
 - name: "Prepare Nextcloud storage directories on homelab"
   delegate_to: homelab
@@ -31,8 +34,11 @@
     user=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.username}' | base64 -d)
     pass=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.password}' | base64 -d)
     printf '%s\n' "$user" "$pass"
+  args:
+    executable: /bin/bash
   register: keycloak_admin_creds
   changed_when: false
+  no_log: true
 
 - name: "Set Keycloak and Nextcloud variables"
   ansible.builtin.set_fact:
@@ -43,6 +49,7 @@
     nextcloud_external_url_effective: "{{ nextcloud_external_url | default('http://' + hostvars['homelab']['ansible_host'] + ':30081') }}"
     nextcloud_external_host: "{{ (nextcloud_external_url | default('http://' + hostvars['homelab']['ansible_host'] + ':30081')) | regex_replace('^https?://', '') | regex_replace('/.*$', '') | regex_replace(':.*$', '') }}"
     nextcloud_external_hostport: "{{ (nextcloud_external_url | default('http://' + hostvars['homelab']['ansible_host'] + ':30081')) | regex_replace('^https?://', '') | regex_replace('/.*$', '') }}"
+  no_log: true
 
 - name: "Ensure Keycloak client for Nextcloud exists"
   ansible.builtin.shell: |
@@ -51,31 +58,38 @@
     clients='[{"name":"nextcloud","redirectUris":["{{ nextcloud_external_url_effective }}/index.php/apps/oidc_login/oidc","{{ nextcloud_external_url_effective }}/apps/oidc_login/oidc","{{ nextcloud_external_url_effective }}/*"],"baseUrl":"{{ nextcloud_external_url_effective }}/","webOrigins":["{{ nextcloud_external_url_effective | regex_replace('/$','') }}"]}]'
     KEYCLOAK_ADMIN_USER="{{ keycloak_admin_user }}" KEYCLOAK_ADMIN_PASSWORD="{{ keycloak_admin_password }}" \
       bash "$script" --realm "{{ keycloak_realm_effective }}" --namespace identity --clients "$clients"
+  args:
+    executable: /bin/bash
   register: keycloak_client_apply
   changed_when: "'Creating/updating client' in keycloak_client_apply.stdout"
+  no_log: true
 
 - name: "Read Nextcloud client secret from identity namespace"
   ansible.builtin.shell: |
     set -euo pipefail
     kubectl -n identity get secret keycloak-nextcloud-client-secret -o jsonpath='{.data.client_secret}' | base64 -d
+  args:
+    executable: /bin/bash
   register: nextcloud_client_secret
   changed_when: false
+  no_log: true
 
 - name: "Check if nextcloud-secrets already exists"
-  kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Secret
-    name: nextcloud-secrets
-    namespace: nextcloud
-  register: nextcloud_secrets_info
-  failed_when: false
+  ansible.builtin.command: kubectl -n nextcloud get secret nextcloud-secrets
+  register: nextcloud_secrets_get
   changed_when: false
+  failed_when: false
 
-- name: "Create nextcloud-secrets once (do not rotate on reruns)"
-  when: nextcloud_secrets_info.resources | default([]) | length == 0
-  kubernetes.core.k8s:
-    state: present
-    definition:
+- name: "Set nextcloud secret exists flag"
+  ansible.builtin.set_fact:
+    nextcloud_secrets_exists: "{{ nextcloud_secrets_get.rc == 0 }}"
+
+- name: "Create nextcloud-secrets manifest (temp file)"
+  when: not nextcloud_secrets_exists
+  ansible.builtin.copy:
+    dest: /tmp/nextcloud-secrets.yaml
+    mode: '0600'
+    content: |
       apiVersion: v1
       kind: Secret
       metadata:
@@ -97,3 +111,18 @@
         overwritehost: "{{ nextcloud_external_hostport }}"
         overwriteprotocol: "{{ (nextcloud_external_url_effective | regex_search('^https?')) | default('http') }}"
         overwritecliurl: "{{ nextcloud_external_url_effective }}"
+  no_log: true
+
+- name: "Apply nextcloud-secrets once (do not rotate on reruns)"
+  when: not nextcloud_secrets_exists
+  ansible.builtin.command: kubectl apply -f /tmp/nextcloud-secrets.yaml
+  register: nextcloud_secrets_apply
+  changed_when: "'created' in nextcloud_secrets_apply.stdout or 'configured' in nextcloud_secrets_apply.stdout"
+  no_log: true
+
+- name: "Remove temp nextcloud-secrets manifest"
+  when: not nextcloud_secrets_exists
+  ansible.builtin.file:
+    path: /tmp/nextcloud-secrets.yaml
+    state: absent
+  changed_when: false

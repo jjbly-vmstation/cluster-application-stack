@@ -13,12 +13,15 @@
 
 - name: "Verify kustomization overlay exists"
   ansible.builtin.stat:
-    path: "{{ kustomize_path }}/overlays/{{ environment }}/kustomization.yaml"
+    path: "{{ kustomize_path }}/overlays/{{ deploy_environment }}/kustomization.yaml"
   register: kustomize_overlay
   failed_when: not kustomize_overlay.stat.exists
 
 - name: "Build and apply VMStation application stack overlay"
   ansible.builtin.shell: |
-    {{ kustomize_cmd }} {{ kustomize_path }}/overlays/{{ environment }} | kubectl apply -f -
+    set -euo pipefail
+    {{ kustomize_cmd }} {{ kustomize_path }}/overlays/{{ deploy_environment }} | kubectl apply -f -
+  args:
+    executable: /bin/bash
   register: apps_apply
   changed_when: "'configured' in apps_apply.stdout or 'created' in apps_apply.stdout"

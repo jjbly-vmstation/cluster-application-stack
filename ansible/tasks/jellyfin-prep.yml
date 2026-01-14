@@ -4,7 +4,7 @@
 - name: "Prepare Jellyfin directories on storagenodet3500"
   delegate_to: storagenodet3500
   become: true
-  when: environment == 'production'
+  when: deploy_environment == 'production'
   block:
     - name: "Create Jellyfin config directory"
       ansible.builtin.file:

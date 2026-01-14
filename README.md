@@ -46,10 +46,10 @@ This repository only contains the README and improvements/standards documentatio
 cd ansible
 
 # Deploy all applications to production
-ansible-playbook playbooks/deploy-applications.yml -e environment=production
+ansible-playbook playbooks/deploy-applications.yml -e deploy_environment=production
 
 # Deploy only Jellyfin
-ansible-playbook playbooks/deploy-jellyfin.yml -e environment=production
+ansible-playbook playbooks/deploy-jellyfin.yml -e deploy_environment=production
 ```
 
 ### Deploy with Kustomize

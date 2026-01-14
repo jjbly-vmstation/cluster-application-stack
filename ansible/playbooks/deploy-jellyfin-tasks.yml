@@ -7,10 +7,10 @@
   become: true
   gather_facts: true
   vars:
-    environment: production
+    deploy_environment: production
   tasks:
     - name: "Include Jellyfin preparation tasks"
       ansible.builtin.include_tasks:
         file: ../tasks/jellyfin-prep.yml
       vars:
-        environment: "{{ environment }}"
+        deploy_environment: "{{ deploy_environment }}"

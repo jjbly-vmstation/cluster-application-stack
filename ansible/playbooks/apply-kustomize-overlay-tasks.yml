@@ -6,12 +6,12 @@
   become: true
   gather_facts: true
   vars:
-    environment: production
+    deploy_environment: production
     kustomize_path: "{{ playbook_dir }}/../../kustomize"
   tasks:
     - name: "Apply overlay"
       ansible.builtin.include_tasks:
         file: ../tasks/apply-stack-overlay.yml
       vars:
-        environment: "{{ environment }}"
+        deploy_environment: "{{ deploy_environment }}"
         kustomize_path: "{{ kustomize_path }}"

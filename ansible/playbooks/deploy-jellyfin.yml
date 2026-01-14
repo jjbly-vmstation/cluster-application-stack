@@ -3,8 +3,8 @@
 # This playbook deploys Jellyfin using Kustomize overlays
 #
 # Usage:
-#   ansible-playbook playbooks/deploy-jellyfin.yml -e environment=production
-#   ansible-playbook playbooks/deploy-jellyfin.yml -e environment=staging
+#   ansible-playbook playbooks/deploy-jellyfin.yml -e deploy_environment=production
+#   ansible-playbook playbooks/deploy-jellyfin.yml -e deploy_environment=staging
 #
 # Prerequisites:
 #   - Kubernetes cluster is running
@@ -18,8 +18,8 @@
   
   vars:
     # Default to production environment
-    environment: production
-    kustomize_overlay_path: "{{ playbook_dir }}/../../kustomize/apps/jellyfin/overlays/{{ environment }}"
+    deploy_environment: production
+    kustomize_overlay_path: "{{ playbook_dir }}/../../kustomize/apps/jellyfin/overlays/{{ deploy_environment }}"
     manifests_jellyfin_path: "{{ playbook_dir }}/../../manifests/jellyfin"
     
     # Deployment wait settings
@@ -30,9 +30,9 @@
     - name: "Validate environment selection"
       ansible.builtin.assert:
         that:
-          - environment in ['production', 'staging']
-        fail_msg: "Invalid environment '{{ environment }}'. Must be 'production' or 'staging'."
-        success_msg: "Deploying to {{ environment }} environment"
+          - deploy_environment in ['production', 'staging']
+        fail_msg: "Invalid deploy_environment '{{ deploy_environment }}'. Must be 'production' or 'staging'."
+        success_msg: "Deploying to {{ deploy_environment }} environment"
 
     - name: "Check if kustomize is installed"
       ansible.builtin.command: which kustomize
@@ -70,7 +70,7 @@
           ansible.builtin.fail:
             msg: "/mnt/media does not exist on storagenodet3500; create/mount it before deploying Jellyfin."
           when: not jellyfin_media_dir.stat.exists
-      when: environment == 'production'
+      when: deploy_environment == 'production'
 
     - name: "Build and apply Kustomize overlay"
       ansible.builtin.shell: |
@@ -82,79 +82,39 @@
       ansible.builtin.debug:
         var: kustomize_apply.stdout_lines
 
-    - name: "Wait for Jellyfin namespace to be active"
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Namespace
-        name: jellyfin
-      register: jellyfin_ns
-      until: jellyfin_ns.resources | length > 0 and jellyfin_ns.resources[0].status.phase == "Active"
-      retries: 10
-      delay: 5
-
-    - name: "Wait for Jellyfin deployment to be ready"
-      kubernetes.core.k8s_info:
-        api_version: apps/v1
-        kind: Deployment
-        name: jellyfin
-        namespace: jellyfin
-      register: jellyfin_deploy
-      until: >
-        jellyfin_deploy.resources | length > 0 and
-        jellyfin_deploy.resources[0].status.readyReplicas is defined and
-        jellyfin_deploy.resources[0].status.readyReplicas >= 1
-      retries: "{{ (deployment_wait_timeout / deployment_check_interval) | int }}"
-      delay: "{{ deployment_check_interval }}"
-      ignore_errors: true
+    - name: "Wait for Jellyfin deployment rollout"
+      ansible.builtin.command: "kubectl -n jellyfin rollout status deploy/jellyfin --timeout={{ deployment_wait_timeout }}s"
+      register: jellyfin_rollout
+      changed_when: false
+      failed_when: false
 
     - name: "Get Jellyfin pod status"
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: jellyfin
-        label_selectors:
-          - app=jellyfin
+      ansible.builtin.command: kubectl -n jellyfin get pods -l app=jellyfin -o wide
       register: jellyfin_pods
+      changed_when: false
+      failed_when: false
 
     - name: "Display Jellyfin pod status"
       ansible.builtin.debug:
         msg: |
           Jellyfin Deployment Status:
-          {% for pod in jellyfin_pods.resources %}
-          - Pod: {{ pod.metadata.name }}
-            Status: {{ pod.status.phase }}
-            Node: {{ pod.spec.nodeName | default('Pending') }}
-            Containers:
-            {% for status in pod.status.containerStatuses | default([]) %}
-              - {{ status.name }}: Ready={{ status.ready }}
-            {% endfor %}
-          {% endfor %}
+          {{ (jellyfin_pods.stdout_lines | default(['(no output)'])) | join('\n          ') }}
 
     - name: "Get Jellyfin service details"
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Service
-        name: jellyfin-service
-        namespace: jellyfin
-      register: jellyfin_svc
+      ansible.builtin.command: kubectl -n jellyfin get service jellyfin-service -o json
+      register: jellyfin_svc_json
+      changed_when: false
+      failed_when: false
 
     - name: "Display access information"
       ansible.builtin.debug:
         msg: |
           Jellyfin Deployment Complete!
           
-          Environment: {{ environment }}
+          Environment: {{ deploy_environment }}
           
           Access URLs:
-          {% if jellyfin_svc.resources | length > 0 %}
-          {% set svc = jellyfin_svc.resources[0] %}
-          {% if svc.spec.type == 'NodePort' %}
-          - HTTP:  http://{{ hostvars['storagenodet3500']['ansible_host'] }}:{{ svc.spec.ports | selectattr('name', 'equalto', 'http') | map(attribute='nodePort') | first }}
-          - HTTPS: https://{{ hostvars['storagenodet3500']['ansible_host'] }}:{{ svc.spec.ports | selectattr('name', 'equalto', 'https') | map(attribute='nodePort') | first }}
-          {% else %}
-          - ClusterIP: {{ svc.spec.clusterIP }}:8096
-          {% endif %}
-          {% endif %}
+            - kubectl: kubectl -n jellyfin get svc jellyfin-service -o wide
           
           Note: First startup may take several minutes for library scanning.
-      when: jellyfin_deploy is not failed
+          when: jellyfin_rollout is not failed

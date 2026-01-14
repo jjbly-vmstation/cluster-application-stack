@@ -3,9 +3,9 @@
 # Master playbook that orchestrates all application deployments
 #
 # Usage:
-#   ansible-playbook playbooks/deploy-applications.yml -e environment=production
-#   ansible-playbook playbooks/deploy-applications.yml -e environment=staging
-#   ansible-playbook playbooks/deploy-applications.yml -e environment=production --tags jellyfin
+#   ansible-playbook playbooks/deploy-applications.yml -e deploy_environment=production
+#   ansible-playbook playbooks/deploy-applications.yml -e deploy_environment=staging
+#   ansible-playbook playbooks/deploy-applications.yml -e deploy_environment=production --tags jellyfin
 #
 # Prerequisites:
 #   - Kubernetes cluster is running
@@ -18,8 +18,9 @@
   gather_facts: true
   
   vars:
-    # Default environment
-    environment: production
+    # Default deployment environment
+    # NOTE: do not use the variable name "environment" here; it's a reserved Ansible keyword.
+    deploy_environment: production
     
     # Applications to deploy (can be overridden)
     deploy_jellyfin: true
@@ -39,8 +40,8 @@
         - name: "Validate environment selection"
           ansible.builtin.assert:
             that:
-              - environment in ['production', 'staging']
-            fail_msg: "Invalid environment '{{ environment }}'. Must be 'production' or 'staging'."
+              - deploy_environment in ['production', 'staging']
+            fail_msg: "Invalid deploy_environment '{{ deploy_environment }}'. Must be 'production' or 'staging'."
 
         - name: "Verify cluster connectivity"
           ansible.builtin.command: kubectl cluster-info
@@ -56,16 +57,14 @@
       tags: [common]
       block:
         - name: "Apply common namespace"
-          kubernetes.core.k8s:
-            state: present
-            src: "{{ manifests_path }}/common/namespace.yaml"
-            wait: true
+          ansible.builtin.command: "kubectl apply -f {{ manifests_path }}/common/namespace.yaml"
+          register: common_ns_apply
+          changed_when: "'configured' in common_ns_apply.stdout or 'created' in common_ns_apply.stdout"
 
         - name: "Apply resource quotas"
-          kubernetes.core.k8s:
-            state: present
-            src: "{{ manifests_path }}/common/resource-quotas.yaml"
-            wait: true
+          ansible.builtin.command: "kubectl apply -f {{ manifests_path }}/common/resource-quotas.yaml"
+          register: rq_apply
+          changed_when: "'configured' in rq_apply.stdout or 'created' in rq_apply.stdout"
 
     - name: "Deploy Jellyfin"
       tags: [jellyfin]
@@ -75,7 +74,7 @@
           ansible.builtin.include_tasks:
             file: ../tasks/jellyfin-prep.yml
           vars:
-            environment: "{{ environment }}"
+            deploy_environment: "{{ deploy_environment }}"
 
     - name: "Deploy Nextcloud"
       tags: [nextcloud]
@@ -85,63 +84,43 @@
           ansible.builtin.include_tasks:
             file: ../tasks/nextcloud-prep.yml
           vars:
-            environment: "{{ environment }}"
+            deploy_environment: "{{ deploy_environment }}"
 
     - name: "Apply application stack"
       tags: [apply]
       ansible.builtin.include_tasks:
         file: ../tasks/apply-stack-overlay.yml
       vars:
-        environment: "{{ environment }}"
+        deploy_environment: "{{ deploy_environment }}"
 
     - name: "Wait for Jellyfin deployment"
       tags: [jellyfin]
       when: deploy_jellyfin | bool
-      kubernetes.core.k8s_info:
-        api_version: apps/v1
-        kind: Deployment
-        name: jellyfin
-        namespace: jellyfin
-      register: jellyfin_deploy
-      until: >
-        jellyfin_deploy.resources | length > 0 and
-        jellyfin_deploy.resources[0].status.readyReplicas is defined and
-        jellyfin_deploy.resources[0].status.readyReplicas >= 1
-      retries: 30
-      delay: 20
-      ignore_errors: true
+      ansible.builtin.command: "kubectl -n jellyfin rollout status deploy/jellyfin --timeout={{ wait_timeout }}s"
+      register: jellyfin_rollout
+      changed_when: false
+      failed_when: false
 
     - name: "Wait for Nextcloud deployment"
       tags: [nextcloud]
       when: deploy_nextcloud | bool
-      kubernetes.core.k8s_info:
-        api_version: apps/v1
-        kind: Deployment
-        name: nextcloud
-        namespace: nextcloud
-      register: nextcloud_deploy
-      until: >
-        nextcloud_deploy.resources | length > 0 and
-        nextcloud_deploy.resources[0].status.readyReplicas is defined and
-        nextcloud_deploy.resources[0].status.readyReplicas >= 1
-      retries: 40
-      delay: 20
-      ignore_errors: true
+      ansible.builtin.command: "kubectl -n nextcloud rollout status deploy/nextcloud --timeout={{ wait_timeout }}s"
+      register: nextcloud_rollout
+      changed_when: false
+      failed_when: false
 
     - name: "Post-deployment verification"
       tags: [always]
       block:
-        - name: "Get all application pods"
-          kubernetes.core.k8s_info:
-            api_version: v1
-            kind: Pod
-            namespace: "{{ item }}"
+        - name: "Get application pods"
+          ansible.builtin.command: "kubectl -n {{ item }} get pods -o wide"
           loop:
             - jellyfin
             - nextcloud
             - vmstation-apps
           register: all_pods
-          ignore_errors: true
+          changed_when: false
+          failed_when: false
 
         - name: "Display deployment summary"
           ansible.builtin.debug:
@@ -149,14 +128,12 @@
               ========================================
               VMStation Application Deployment Summary
               ========================================
-              Environment: {{ environment }}
+              Environment: {{ deploy_environment }}
               
               Deployed Namespaces:
               {% for ns_result in all_pods.results %}
               - {{ ns_result.item }}:
-              {% for pod in ns_result.resources | default([]) %}
-                - {{ pod.metadata.name }}: {{ pod.status.phase }}
-              {% endfor %}
+              {{ (ns_result.stdout_lines | default(['(no output)'])) | join('\n              ') }}
               {% endfor %}
               ========================================
 

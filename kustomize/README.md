@@ -44,7 +44,7 @@ kubectl apply -k kustomize/overlays/staging
 
 ```bash
 # Deploy via Ansible playbook
-ansible-playbook ansible/playbooks/deploy-applications.yml -e environment=production
+ansible-playbook ansible/playbooks/deploy-applications.yml -e deploy_environment=production
 ```
 
 ## Overlays
