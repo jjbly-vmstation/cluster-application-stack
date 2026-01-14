@@ -93,6 +93,9 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/env/0/value
         value: "http://192.168.4.61:30097/oauth2/callback"
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: "http://192.168.4.63:30180/auth/realms/cluster-services"
 
   - target:
       kind: Service

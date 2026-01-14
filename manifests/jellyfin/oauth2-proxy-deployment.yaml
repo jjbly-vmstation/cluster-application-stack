@@ -43,10 +43,16 @@ spec:
                 REDIRECT_URL_ARG=""
               fi
 
+              if [ -n "${OAUTH2_PROXY_OIDC_ISSUER_URL:-}" ]; then
+                ISSUER_URL_ARG="--oidc-issuer-url=${OAUTH2_PROXY_OIDC_ISSUER_URL}"
+              else
+                ISSUER_URL_ARG="--oidc-issuer-url=http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services"
+              fi
+
               exec oauth2-proxy \
                 --http-address=0.0.0.0:4180 \
                 --provider=keycloak \
-                --oidc-issuer-url=http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services \
+                $ISSUER_URL_ARG \
                 --client-id=jellyfin \
                 $CLIENT_SECRET_ARG \
                 $REDIRECT_URL_ARG \
@@ -59,6 +65,8 @@ spec:
                 --upstream=http://jellyfin-service.jellyfin.svc.cluster.local:8096/
           env:
             - name: OAUTH2_PROXY_REDIRECT_URL
+              value: ""
+            - name: OAUTH2_PROXY_OIDC_ISSUER_URL
               value: ""
             - name: OAUTH2_PROXY_COOKIE_SECRET
               valueFrom:

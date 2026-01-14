@@ -34,6 +34,21 @@ spec:
                 echo "oidc_login already present"
                 exit 0
               fi
+
+              # If the app was pre-installed onto the PVC but extracted into a
+              # nested directory structure, normalize it into the expected
+              # /var/www/html/custom_apps/oidc_login path.
+              candidate="$(find /var/www/html/custom_apps -maxdepth 6 -type f -path '*oidc_login*/appinfo/info.xml' 2>/dev/null | head -n 1 || true)"
+              if [ -n "$candidate" ]; then
+                srcdir="$(dirname "$(dirname "$candidate")")"
+                if [ "$srcdir" != "/var/www/html/custom_apps/oidc_login" ]; then
+                  rm -rf /var/www/html/custom_apps/oidc_login
+                  mv "$srcdir" /var/www/html/custom_apps/oidc_login
+                fi
+                echo "oidc_login present (normalized)"
+                exit 0
+              fi
+
               tmpdir="/tmp/oidc"
               mkdir -p "$tmpdir"
               # Avoid apk installs at runtime (can fail if Alpine mirrors are unreachable).
