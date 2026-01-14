@@ -38,9 +38,24 @@
 - name: "Fetch Keycloak admin credentials from cluster secret"
   ansible.builtin.shell: |
     set -euo pipefail
-    user=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.username}' | base64 -d)
-    pass=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.password}' | base64 -d)
-    printf '%s\n' "$user" "$pass"
+    # Primary: chart-managed Keycloak secret (identity stack source-of-truth)
+    if kubectl -n identity get secret keycloak-admin >/dev/null 2>&1; then
+      user=$(kubectl -n identity get secret keycloak-admin -o jsonpath='{.data.KEYCLOAK_USER}' | base64 -d)
+      pass=$(kubectl -n identity get secret keycloak-admin -o jsonpath='{.data.KEYCLOAK_PASSWORD}' | base64 -d)
+      printf '%s\n' "$user" "$pass"
+      exit 0
+    fi
+
+    # Fallback: legacy credentials secret (some older flows)
+    if kubectl -n identity get secret keycloak-admin-creds >/dev/null 2>&1; then
+      user=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.username}' | base64 -d)
+      pass=$(kubectl -n identity get secret keycloak-admin-creds -o jsonpath='{.data.password}' | base64 -d)
+      printf '%s\n' "$user" "$pass"
+      exit 0
+    fi
+
+    echo "ERROR: Could not find Keycloak admin credentials secret (tried keycloak-admin and keycloak-admin-creds)" >&2
+    exit 1
   args:
     executable: /bin/bash
   environment:
