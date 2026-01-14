@@ -66,12 +66,33 @@ patches:
         path: /spec/template/spec/nodeSelector
         value:
           kubernetes.io/hostname: storagenodet3500
-      - op: replace
-        path: /spec/template/spec/containers/0/env/0/value
-        value: "http://192.168.4.61:30097/oauth2/callback"
-      - op: replace
-        path: /spec/template/spec/containers/0/env/1/value
-        value: "http://192.168.4.63:30180/auth/realms/cluster-services"
+
+  - target:
+      kind: Deployment
+      name: jellyfin-oauth2-proxy
+      namespace: jellyfin
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: jellyfin-oauth2-proxy
+        namespace: jellyfin
+      spec:
+        template:
+          spec:
+            containers:
+              - name: oauth2-proxy
+                env:
+                  - name: OAUTH2_PROXY_REDIRECT_URL
+                    value: "http://192.168.4.61:30097/oauth2/callback"
+                  - name: OAUTH2_PROXY_OIDC_ISSUER_URL
+                    value: ""
+                  - name: OAUTH2_PROXY_LOGIN_URL
+                    value: "http://192.168.4.63:30180/auth/realms/cluster-services/protocol/openid-connect/auth"
+                  - name: OAUTH2_PROXY_REDEEM_URL
+                    value: "http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services/protocol/openid-connect/token"
+                  - name: OAUTH2_PROXY_OIDC_JWKS_URL
+                    value: "http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services/protocol/openid-connect/certs"
 
   - target:
       kind: Service

@@ -49,10 +49,36 @@ spec:
                 ISSUER_URL_ARG="--oidc-issuer-url=http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services"
               fi
 
+              # In a Kubernetes + NodePort setup, browsers must use the *external*
+              # Keycloak URL for the authorization endpoint, but the oauth2-proxy
+              # pod should typically use the in-cluster service for token/JWKS.
+              # When any of these are set, we disable OIDC discovery and require
+              # all three to be provided.
+              if [ -n "${OAUTH2_PROXY_LOGIN_URL:-}" ] || [ -n "${OAUTH2_PROXY_REDEEM_URL:-}" ] || [ -n "${OAUTH2_PROXY_OIDC_JWKS_URL:-}" ]; then
+                if [ -z "${OAUTH2_PROXY_LOGIN_URL:-}" ] || [ -z "${OAUTH2_PROXY_REDEEM_URL:-}" ] || [ -z "${OAUTH2_PROXY_OIDC_JWKS_URL:-}" ]; then
+                  echo "ERROR: When overriding OIDC endpoints you must set: OAUTH2_PROXY_LOGIN_URL, OAUTH2_PROXY_REDEEM_URL, OAUTH2_PROXY_OIDC_JWKS_URL" >&2
+                  exit 1
+                fi
+
+                SKIP_DISCOVERY_ARG="--skip-oidc-discovery=true"
+                LOGIN_URL_ARG="--login-url=${OAUTH2_PROXY_LOGIN_URL}"
+                REDEEM_URL_ARG="--redeem-url=${OAUTH2_PROXY_REDEEM_URL}"
+                JWKS_URL_ARG="--oidc-jwks-url=${OAUTH2_PROXY_OIDC_JWKS_URL}"
+              else
+                SKIP_DISCOVERY_ARG=""
+                LOGIN_URL_ARG=""
+                REDEEM_URL_ARG=""
+                JWKS_URL_ARG=""
+              fi
+
               exec oauth2-proxy \
                 --http-address=0.0.0.0:4180 \
                 --provider=keycloak \
                 $ISSUER_URL_ARG \
+                $SKIP_DISCOVERY_ARG \
+                $LOGIN_URL_ARG \
+                $REDEEM_URL_ARG \
+                $JWKS_URL_ARG \
                 --client-id=jellyfin \
                 $CLIENT_SECRET_ARG \
                 $REDIRECT_URL_ARG \
@@ -67,6 +93,12 @@ spec:
             - name: OAUTH2_PROXY_REDIRECT_URL
               value: ""
             - name: OAUTH2_PROXY_OIDC_ISSUER_URL
+              value: ""
+            - name: OAUTH2_PROXY_LOGIN_URL
+              value: ""
+            - name: OAUTH2_PROXY_REDEEM_URL
+              value: ""
+            - name: OAUTH2_PROXY_OIDC_JWKS_URL
               value: ""
             - name: OAUTH2_PROXY_COOKIE_SECRET
               valueFrom:

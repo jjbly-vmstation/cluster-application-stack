@@ -92,9 +92,10 @@ A self-hosted media streaming solution.
 
 **Access (web SSO via oauth2-proxy)**: http://192.168.4.61:30097
 
-Note: the Jellyfin SSO flow will redirect your browser to Keycloak. For LAN clients, Keycloak must be configured with an externally reachable URL (e.g., `http://192.168.4.63:30180/auth`) — in-cluster service DNS names like `keycloak-http.identity.svc.cluster.local` will not resolve on your network.
+Note: the Jellyfin SSO flow is browser-based and redirects your browser to Keycloak. For LAN clients, the Keycloak authorization endpoint must be externally reachable (e.g., `http://192.168.4.63:30180/auth`). The production overlay configures oauth2-proxy to use the external Keycloak URL for browser redirects while using the in-cluster Keycloak service for token + JWKS.
 
 Note: Jellyfin native clients (TV/phone apps) generally do not work well behind oauth2-proxy because it requires a browser-based OIDC login flow and cookie handling. Use the direct endpoint for apps, and the SSO endpoint for browser access.
+Tip: for TVs/phones, Jellyfin supports "Quick Connect" pairing so family members can authorize a device from the web UI without typing a password on the device.
 
 For setup details, see [docs/JELLYFIN_SETUP.md](docs/JELLYFIN_SETUP.md).
 
