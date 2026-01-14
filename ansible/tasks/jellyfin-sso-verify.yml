@@ -29,15 +29,15 @@
       jellyfin-oauth2-proxy is not configured to use the external Keycloak NodePort for the browser login redirect.
       Expected OAUTH2_PROXY_LOGIN_URL to be 'http://192.168.4.63:30180/auth/realms/cluster-services/protocol/openid-connect/auth'.
 
-- name: "Assert oauth2-proxy uses in-cluster Keycloak for token/userinfo calls"
+- name: "Assert oauth2-proxy uses external Keycloak for token/userinfo calls"
   ansible.builtin.assert:
     that:
-      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_REDEEM_URL=http://keycloak-http\.identity\.svc\.cluster\.local:80/auth/realms/cluster-services/protocol/openid-connect/token$', multiline=True)
-      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_PROFILE_URL=http://keycloak-http\.identity\.svc\.cluster\.local:80/auth/realms/cluster-services/protocol/openid-connect/userinfo$', multiline=True)
-      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_VALIDATE_URL=http://keycloak-http\.identity\.svc\.cluster\.local:80/auth/realms/cluster-services/protocol/openid-connect/userinfo$', multiline=True)
+      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_REDEEM_URL=http://192\.168\.4\.63:30180/auth/realms/cluster-services/protocol/openid-connect/token$', multiline=True)
+      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_PROFILE_URL=http://192\.168\.4\.63:30180/auth/realms/cluster-services/protocol/openid-connect/userinfo$', multiline=True)
+      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_VALIDATE_URL=http://192\.168\.4\.63:30180/auth/realms/cluster-services/protocol/openid-connect/userinfo$', multiline=True)
     fail_msg: >-
-      jellyfin-oauth2-proxy back-channel URLs are not set to the in-cluster Keycloak service.
-      This typically causes either 500s (issuer/endpoint mismatch) or internal-DNS redirects.
+      jellyfin-oauth2-proxy back-channel URLs are not set to the external Keycloak NodePort.
+      This typically causes oauth2-proxy callback failures (500) due to unreachable or mismatched token/userinfo endpoints.
 
 - name: "Check Jellyfin SSO service is NodePort 30097"
   ansible.builtin.command: >-

@@ -90,13 +90,13 @@ patches:
                   - name: OAUTH2_PROXY_LOGIN_URL
                     value: "http://192.168.4.63:30180/auth/realms/cluster-services/protocol/openid-connect/auth"
                   - name: OAUTH2_PROXY_REDEEM_URL
-                    value: "http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services/protocol/openid-connect/token"
+                    value: "http://192.168.4.63:30180/auth/realms/cluster-services/protocol/openid-connect/token"
                   - name: OAUTH2_PROXY_PROFILE_URL
-                    value: "http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services/protocol/openid-connect/userinfo"
+                    value: "http://192.168.4.63:30180/auth/realms/cluster-services/protocol/openid-connect/userinfo"
                   - name: OAUTH2_PROXY_VALIDATE_URL
-                    value: "http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services/protocol/openid-connect/userinfo"
+                    value: "http://192.168.4.63:30180/auth/realms/cluster-services/protocol/openid-connect/userinfo"
                   - name: OAUTH2_PROXY_OIDC_JWKS_URL
-                    value: "http://keycloak-http.identity.svc.cluster.local:80/auth/realms/cluster-services/protocol/openid-connect/certs"
+                    value: "http://192.168.4.63:30180/auth/realms/cluster-services/protocol/openid-connect/certs"
 
   - target:
       kind: Service
