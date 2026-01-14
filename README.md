@@ -54,6 +54,8 @@ ansible-playbook playbooks/deploy-jellyfin.yml -e deploy_environment=production
 
 ### Deploy with Kustomize
 
+Run these `kubectl` commands on the Linux control-plane host (masternode) or any Linux host with a working kubeconfig (e.g. `/etc/kubernetes/admin.conf`).
+
 ```bash
 # Deploy to production
 kubectl apply -k kustomize/overlays/production

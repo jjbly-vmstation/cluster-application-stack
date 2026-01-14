@@ -101,6 +101,12 @@
       changed_when: false
       failed_when: false
 
+    - name: "Verify Jellyfin SSO (oauth2-proxy) configuration"
+      tags: [jellyfin]
+      when: deploy_jellyfin | bool
+      ansible.builtin.include_tasks:
+        file: ../tasks/jellyfin-sso-verify.yml
+
     - name: "Wait for Nextcloud deployment"
       tags: [nextcloud]
       when: deploy_nextcloud | bool

@@ -1,0 +1,54 @@
+---
+# Verify Jellyfin SSO (oauth2-proxy) runtime configuration
+#
+# This is intentionally kubectl-only and runs on kube-master.
+# It avoids leaking secrets while surfacing the critical URL-plane settings.
+
+- name: "Get jellyfin-oauth2-proxy deployment env (oauth2-proxy container)"
+  ansible.builtin.command: >-
+    kubectl -n jellyfin get deploy jellyfin-oauth2-proxy
+    -o jsonpath='{range .spec.template.spec.containers[?(@.name=="oauth2-proxy")].env[*]}{.name}={.value}{"\n"}{end}'
+  register: jellyfin_oauth2_proxy_env
+  changed_when: false
+  failed_when: jellyfin_oauth2_proxy_env.rc != 0
+
+- name: "Display jellyfin-oauth2-proxy URL-plane env vars"
+  ansible.builtin.debug:
+    msg: |
+      jellyfin-oauth2-proxy env (filtered):
+      {{ (jellyfin_oauth2_proxy_env.stdout_lines | default([]))
+          | select('match', '^OAUTH2_PROXY_(REDIRECT_URL|OIDC_ISSUER_URL|LOGIN_URL|REDEEM_URL|PROFILE_URL|VALIDATE_URL|OIDC_JWKS_URL)=')
+          | list
+          | join('\n') }}
+
+- name: "Assert oauth2-proxy uses external Keycloak for browser auth"
+  ansible.builtin.assert:
+    that:
+      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_LOGIN_URL=http://192\.168\.4\.63:30180/auth/realms/cluster-services/protocol/openid-connect/auth$', multiline=True)
+    fail_msg: >-
+      jellyfin-oauth2-proxy is not configured to use the external Keycloak NodePort for the browser login redirect.
+      Expected OAUTH2_PROXY_LOGIN_URL to be 'http://192.168.4.63:30180/auth/realms/cluster-services/protocol/openid-connect/auth'.
+
+- name: "Assert oauth2-proxy uses in-cluster Keycloak for token/userinfo calls"
+  ansible.builtin.assert:
+    that:
+      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_REDEEM_URL=http://keycloak-http\.identity\.svc\.cluster\.local:80/auth/realms/cluster-services/protocol/openid-connect/token$', multiline=True)
+      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_PROFILE_URL=http://keycloak-http\.identity\.svc\.cluster\.local:80/auth/realms/cluster-services/protocol/openid-connect/userinfo$', multiline=True)
+      - jellyfin_oauth2_proxy_env.stdout is search('^OAUTH2_PROXY_VALIDATE_URL=http://keycloak-http\.identity\.svc\.cluster\.local:80/auth/realms/cluster-services/protocol/openid-connect/userinfo$', multiline=True)
+    fail_msg: >-
+      jellyfin-oauth2-proxy back-channel URLs are not set to the in-cluster Keycloak service.
+      This typically causes either 500s (issuer/endpoint mismatch) or internal-DNS redirects.
+
+- name: "Check Jellyfin SSO service is NodePort 30097"
+  ansible.builtin.command: >-
+    kubectl -n jellyfin get svc jellyfin-sso
+    -o jsonpath={.spec.type}:{.spec.ports[0].nodePort}
+  register: jellyfin_sso_svc
+  changed_when: false
+  failed_when: jellyfin_sso_svc.rc != 0
+
+- name: "Assert Jellyfin SSO service exposure"
+  ansible.builtin.assert:
+    that:
+      - jellyfin_sso_svc.stdout == 'NodePort:30097'
+    fail_msg: "Expected jellyfin-sso to be NodePort:30097, got: {{ jellyfin_sso_svc.stdout | default('(empty)') }}"
