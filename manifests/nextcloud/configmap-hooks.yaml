@@ -51,3 +51,18 @@ data:
 
     echo "Setting oidc_login attribute mapping"
     occ config:system:set oidc_login_attributes --type=json --value='{"id":"preferred_username","mail":"email"}'
+
+  020-lightweight-config.sh: |
+    #!/bin/sh
+    set -eu
+    occ() {
+      su -s /bin/sh www-data -c "php -f /var/www/html/occ $*"
+    }
+    echo "Disabling heavy Nextcloud features..."
+    occ config:system:set enable_previews --type=boolean --value=false || true
+    occ config:system:set encryption.enabled --type=boolean --value=false || true
+    occ app:disable activity || true
+    occ app:disable updatenotification || true
+    occ app:disable nextcloud_announcements || true
+    occ app:disable photos || true
+    occ app:disable dashboard || true
