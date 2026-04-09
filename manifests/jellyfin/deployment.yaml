@@ -80,11 +80,11 @@ spec:
               readOnly: true
           resources:
             requests:
-              cpu: 500m
-              memory: 512Mi
-            limits:
               cpu: "2"
-              memory: 2Gi
+              memory: "1Gi"
+            limits:
+              cpu: "6"
+              memory: "3Gi"
           # Liveness probe - restart if unhealthy
           livenessProbe:
             httpGet:
