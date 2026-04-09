@@ -9,7 +9,7 @@ metadata:
 
 # Common labels applied to all resources
 labels:
-  - includeSelectors: true
+  - includeSelectors: false
     pairs:
       app.kubernetes.io/managed-by: kustomize
       vmstation.io/component: media
