@@ -19,7 +19,6 @@ spec:
   selector:
     matchLabels:
       app: jellyfin
-      component: media-server
   template:
     metadata:
       labels:
