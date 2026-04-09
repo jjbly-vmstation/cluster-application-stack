@@ -24,9 +24,9 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - homelab
+                - storagenodet3500
 ---
-# MariaDB PV (static hostPath, pinned to homelab)
+# MariaDB PV (static hostPath, pinned to storagenodet3500)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -51,4 +51,4 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - homelab
+                - storagenodet3500

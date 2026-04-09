@@ -68,8 +68,6 @@ spec:
           volumeMounts:
             - name: nextcloud-html
               mountPath: /var/www/html
-            - name: family-files
-              mountPath: /var/www/html/data
       containers:
         - name: nextcloud
           image: nextcloud:29-apache
@@ -149,7 +147,8 @@ spec:
             - name: nextcloud-html
               mountPath: /var/www/html
             - name: family-files
-              mountPath: /var/www/html/data
+              mountPath: /mnt/media
+              readOnly: true
             - name: nextcloud-entrypoint-hooks-post
               mountPath: /docker-entrypoint-hooks.d/post-installation
               readOnly: true
@@ -166,8 +165,8 @@ spec:
             claimName: nextcloud-html-pvc
         - name: family-files
           hostPath:
-            path: /mnt/media/family-files
-            type: DirectoryOrCreate
+            path: /srv/media
+            type: Directory
         - name: nextcloud-entrypoint-hooks-post
           configMap:
             name: nextcloud-entrypoint-hooks
