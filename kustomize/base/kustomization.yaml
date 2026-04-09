@@ -9,7 +9,7 @@ metadata:
 
 # Common labels for all resources
 labels:
-  - includeSelectors: true
+  - includeSelectors: false
     pairs:
       app.kubernetes.io/managed-by: kustomize
       app.kubernetes.io/part-of: vmstation
