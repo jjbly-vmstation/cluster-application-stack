@@ -1,13 +1,23 @@
 ---
-# deploy-nextcloud-tasks.yml
-- name: "Nextcloud Preparation"
+- name: "Nextcloud Disk Preparation"
   hosts: storage_nodes
   become: true
-  # Add this line to pull in your variables
+  tasks:
+    - name: Ensure Nextcloud directory exists on 450GB drive
+      ansible.builtin.file:
+        path: /mnt/media/nextcloud
+        state: directory
+        owner: "33"
+        group: "33"
+        mode: '0755'
+
+- name: "Nextcloud Secret Preparation"
+  hosts: localhost  # Run this part locally on the masternode
+  connection: local
   vars_files:
     - "../group_vars/all.yml"
   tasks:
-    - name: Create Nextcloud Secrets
+    - name: Create Nextcloud Secrets in Cluster API
       kubernetes.core.k8s:
         state: present
         definition:
@@ -18,12 +28,4 @@
             namespace: nextcloud
           stringData:
             db-name: "{{ nextcloud_db_name }}"
-            db-user: "{{ nextcloud_db_user }}"
-            db-password: "{{ nextcloud_db_password }}"
-            mariadb-root-password: "{{ mariadb_root_password }}"
-            admin-user: "{{ nextcloud_admin_user }}"
-            admin-password: "{{ nextcloud_admin_password }}"
-            trusted-domains: "{{ nextcloud_trusted_domains }}"
-            overwriteprotocol: "http"
-            overwritehost: "{{ nextcloud_overwrite_host }}"
-            overwritecliurl: "http://{{ nextcloud_overwrite_host }}"
+            # ... (rest of your secret keys)
