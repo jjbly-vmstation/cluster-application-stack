@@ -64,7 +64,7 @@ spec:
               mountPath: /var/www/html
         - name: prep-data-dir
           image: alpine:3.19
-          command: ["sh", "-c", "mkdir -p /var/www/html/data /var/www/html/apps /var/www/html/custom_apps && chown -R 33:33 /var/www/html/data /var/www/html/apps /var/www/html/custom_apps && [ ! -f /var/www/html/data/.ocdata ] && touch /var/www/html/data/.ocdata || true"]
+          command: ["sh", "-c", "mkdir -p /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps && chown -R 33:33 /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps && [ ! -f /var/www/html/data/.ocdata ] && touch /var/www/html/data/.ocdata || true"]
           volumeMounts:
             - name: nextcloud-html
               mountPath: /var/www/html
