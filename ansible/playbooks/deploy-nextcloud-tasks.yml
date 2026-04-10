@@ -1,7 +1,7 @@
 ---
 # deploy-nextcloud-tasks.yml
 - name: "Nextcloud Preparation"
-  hosts: kube-master
+  hosts: storage_nodes
   become: true
   # Add this line to pull in your variables
   vars_files:
