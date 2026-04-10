@@ -1,16 +1,26 @@
 ---
-# Wrapper playbook for Nextcloud preparation tasks.
-# Prefer running deploy-applications.yml for the full stack.
-
+# deploy-nextcloud-tasks.yml
 - name: "Nextcloud Preparation"
   hosts: kube-master
   become: true
-  gather_facts: true
-  vars:
-    deploy_environment: production
   tasks:
-    - name: "Include Nextcloud preparation tasks"
-      ansible.builtin.include_tasks:
-        file: ../tasks/nextcloud-prep.yml
-      vars:
-        deploy_environment: "{{ deploy_environment }}"
+    - name: Create Nextcloud Secrets
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: nextcloud-secrets
+            namespace: nextcloud
+          stringData:
+            db-name: "{{ nextcloud_db_name }}"
+            db-user: "{{ nextcloud_db_user }}"
+            db-password: "{{ nextcloud_db_password }}"
+            mariadb-root-password: "{{ mariadb_root_password }}"
+            admin-user: "{{ nextcloud_admin_user }}"
+            admin-password: "{{ nextcloud_admin_password }}"
+            trusted-domains: "{{ nextcloud_trusted_domains }}"
+            overwriteprotocol: "http"
+            overwritehost: "{{ nextcloud_overwrite_host }}"
+            overwritecliurl: "http://{{ nextcloud_overwrite_host }}"

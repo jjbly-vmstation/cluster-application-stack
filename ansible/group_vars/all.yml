@@ -1,2 +1,9 @@
-# ensures that lan machines are inherently trusted
-nextcloud_trusted_domains: "nextcloud.nextcloud.svc.cluster.local *.vmstation.local 192.168.4.1 *"
+# ansible/group_vars/all.yml
+nextcloud_db_name: "nextcloud"
+nextcloud_db_user: "nextcloud"
+nextcloud_db_password: "YourSafePassword"
+mariadb_root_password: "YourRootPassword"
+nextcloud_admin_user: "admin"
+nextcloud_admin_password: "YourAdminPassword"
+nextcloud_trusted_domains: "*"
+nextcloud_overwrite_host: "*.vmstation.local"
