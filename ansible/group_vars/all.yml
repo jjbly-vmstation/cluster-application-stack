@@ -1,0 +1,2 @@
+# ensures that lan machines are inherently trusted
+nextcloud_trusted_domains: "nextcloud.nextcloud.svc.cluster.local *.vmstation.local 192.168.4.1 *"
