@@ -3,6 +3,9 @@
 - name: "Nextcloud Preparation"
   hosts: kube-master
   become: true
+  # Add this line to pull in your variables
+  vars_files:
+    - "../group_vars/all.yml"
   tasks:
     - name: Create Nextcloud Secrets
       kubernetes.core.k8s:
