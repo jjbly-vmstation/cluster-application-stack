@@ -100,9 +100,10 @@ spec:
               memory: "1.5Gi"
       volumes:
         - name: nextcloud-html
-          persistentVolumeClaim:
-            claimName: nextcloud-html-pvc
+          hostPath:
+            path: /mnt/media/nextcloud
+            type: Directory
         - name: family-files
           hostPath:
-            path: /srv/media
+            path: /mnt/media/nextcloud
             type: Directory
