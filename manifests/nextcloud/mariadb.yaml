@@ -21,6 +21,13 @@ spec:
         app.kubernetes.io/name: nextcloud
         app.kubernetes.io/component: mariadb
     spec:
+      initContainers:
+        - name: fix-mariadb-permissions
+          image: busybox
+          command: ["sh", "-c", "chown -R 999:999 /var/lib/mysql"]
+          volumeMounts:
+            - name: mariadb-data
+              mountPath: /var/lib/mysql
       containers:
         - name: mariadb
           image: mariadb:10.11
