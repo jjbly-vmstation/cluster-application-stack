@@ -8,7 +8,6 @@ resources:
   - namespace.yaml
   - persistentvolume.yaml
   - persistentvolumeclaim.yaml
-  - configmap-hooks.yaml
   - mariadb.yaml
   - nextcloud.yaml
   - service.yaml
